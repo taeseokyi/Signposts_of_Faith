@@ -14,7 +14,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from content import NOTE_CAPTION, date_label, inline, lines_html
+from content import NOTE_CAPTION, SITE_URL, date_label, inline, lines_html
 
 HERE = Path(__file__).resolve().parent
 
@@ -69,10 +69,11 @@ def _head(eyebrow, title):
 
 
 def body_html(data):
-    return _document(data, sections_html(data, lambda note: note['path'].resolve().as_uri()))
+    # PDF에는 사진을 넣지 않고 웹사이트의 사진 주소만 링크로 단다
+    return _document(data, sections_html(data, lambda note: f"{SITE_URL}{data['date'].isoformat()}/{note['file']}", note_as_link=True))
 
 
-def sections_html(data, note_src=None):
+def sections_html(data, note_src=None, note_as_link=False):
     """여는 말씀부터 근거까지의 본문 마크업. 인쇄용 PDF와 웹사이트가 같이 쓴다.
 
     note_src(note) 는 노트 사진의 주소를 돌려준다 (PDF는 파일 경로, 웹은 상대 경로).
@@ -118,7 +119,7 @@ def sections_html(data, note_src=None):
     out += [f'<p class="closing">{lines_html(lines)}</p>' for lines in r['paras']]
     out.append('</section>')
 
-    if data['notes'] and note_src:
+    if data['notes'] and note_src and not note_as_link:
         out.append('<section class="section notebook">' + _head('NOTEBOOK', '묵상 노트'))
         for note in data['notes']:
             src = html.escape(note_src(note))
@@ -129,6 +130,9 @@ def sections_html(data, note_src=None):
     for group in data['references']:
         items = ''.join(f'<li>{inline(item)}</li>' for item in group['items'])
         out.append(f'<h4>{inline(group["title"])}</h4><ul>{items}</ul>')
+    if data['notes'] and note_src and note_as_link:
+        links = ''.join(f'<li><a href="{html.escape(note_src(n))}">{html.escape(note_src(n))}</a></li>' for n in data['notes'])
+        out.append(f'<h4>손글씨 묵상 노트</h4><ul class="note-links">{links}</ul><p class="note-caption">{NOTE_CAPTION}</p>')
     out.append('</section>')
 
     return ''.join(out)

@@ -154,7 +154,8 @@ p { margin: 0 0 0.75em; }
 /* 묵상 노트 사진 */
 .note-photo { margin: 0; text-align: center; }
 .note-photo img { max-width: 100%; max-height: 200mm; border: 0.5pt solid var(--line); }
-.note-caption { text-align: center; font-size: 8.6pt; color: var(--sub); margin-top: 3mm; }
+.note-caption { font-size: 8.4pt; color: var(--sub); margin-top: 1mm; }
+.note-links a { color: var(--accent); word-break: break-all; }
 
 /* 근거 */
 .references h4 { font-size: 10pt; color: var(--accent); margin: 4mm 0 1mm; }
