@@ -27,6 +27,9 @@ SEASON_ACCENT = {
     '순교자': '#8a2f2f',
 }
 
+SITE_URL = 'https://taeseokyi.github.io/Signposts_of_Faith/'
+NOTE_CAPTION = '이 글의 원본인 손글씨 묵상 노트입니다. 개인적인 내용은 가렸습니다.'
+
 WEEKDAYS = '월화수목금토일'
 KOREAN_COUNT = ['', '한', '두', '세', '네', '다섯', '여섯', '일곱', '여덟', '아홉', '열']
 
@@ -153,6 +156,14 @@ def parse(path):
         season = '연중'
     meta.setdefault('표지부제', '말씀을 따라 걸은 하루의 묵상')
 
+    # 손글씨 노트 사진: 원저작임을 보여 주려고 공개 글에 함께 싣는다 (날짜 폴더 안의 파일, 쉼표로 여러 장)
+    notes = []
+    for name in [n.strip() for n in meta.get('노트사진', '').split(',') if n.strip()]:
+        if (path.parent / name).is_file():
+            notes.append({'file': name, 'path': path.parent / name})
+        else:
+            problems.append(('오류', f'노트사진 파일이 없습니다: {path.parent.name}/{name}'))
+
     data = {
         'meta': meta,
         'date': date,
@@ -165,6 +176,7 @@ def parse(path):
         'oneline': {'paras': []},
         'reflection': {'intro': [], 'questions': [], 'paras': []},
         'references': [],
+        'notes': notes,
         'problems': problems,
     }
 

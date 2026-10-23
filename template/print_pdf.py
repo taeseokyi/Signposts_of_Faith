@@ -14,7 +14,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from content import date_label, inline, lines_html
+from content import NOTE_CAPTION, date_label, inline, lines_html
 
 HERE = Path(__file__).resolve().parent
 
@@ -69,11 +69,14 @@ def _head(eyebrow, title):
 
 
 def body_html(data):
-    return _document(data, sections_html(data))
+    return _document(data, sections_html(data, lambda note: note['path'].resolve().as_uri()))
 
 
-def sections_html(data):
-    """여는 말씀부터 근거까지의 본문 마크업. 인쇄용 PDF와 웹사이트가 같이 쓴다."""
+def sections_html(data, note_src=None):
+    """여는 말씀부터 근거까지의 본문 마크업. 인쇄용 PDF와 웹사이트가 같이 쓴다.
+
+    note_src(note) 는 노트 사진의 주소를 돌려준다 (PDF는 파일 경로, 웹은 상대 경로).
+    """
     out = []
 
     out.append('<section class="section prologue">' + _head('PROLOGUE', '여는 말씀'))
@@ -114,6 +117,13 @@ def sections_html(data):
                    + '<div class="write-line"></div>' * 3 + '</div>')
     out += [f'<p class="closing">{lines_html(lines)}</p>' for lines in r['paras']]
     out.append('</section>')
+
+    if data['notes'] and note_src:
+        out.append('<section class="section notebook">' + _head('NOTEBOOK', '묵상 노트'))
+        for note in data['notes']:
+            src = html.escape(note_src(note))
+            out.append(f'<figure class="note-photo"><a href="{src}"><img src="{src}" alt="손글씨 묵상 노트"></a></figure>')
+        out.append(f'<p class="note-caption">{NOTE_CAPTION}</p></section>')
 
     out.append('<section class="section references">' + _head('REFERENCES', '근거'))
     for group in data['references']:

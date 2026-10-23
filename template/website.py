@@ -114,7 +114,7 @@ def day_page(data, newer, older, pdf_href):
     body = (
         '<div class="wrap">'
         f'<nav class="topnav"><a href="../">← {SITE_TITLE}</a></nav>'
-        f'{hero}<main>{print_pdf.sections_html(data)}</main>{foot}'
+        f'{hero}<main>{print_pdf.sections_html(data, lambda note: note["file"])}</main>{foot}'
         f'<p class="site-foot">{html.escape(SITE_ABOUT)}</p>'
         '</div>'
     )
@@ -168,6 +168,8 @@ def build_site(root, out, with_pdf=True, log=print):
         folder = out / day
         folder.mkdir()
         pdf_href = None
+        for note in data['notes']:
+            shutil.copy(note['path'], folder / note['file'])
         if with_pdf:
             pdf = folder / f'signposts-{day}.pdf'
             total, _ = print_pdf.build(data, pdf)
