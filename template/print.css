@@ -1,0 +1,157 @@
+/* 인쇄용 PDF (WORKFLOW.md 4.2). 색상 변수는 print_pdf.py 가 전례 시기에 맞춰 넣는다. */
+
+@page {
+  size: A4;
+  margin: 24mm 22mm 22mm;
+  @bottom-center {
+    content: counter(page);
+    font-family: 'Noto Serif CJK KR', 'Noto Serif KR', 'Nanum Myeongjo', 'Batang', serif;
+    font-size: 8pt;
+    color: var(--gold);
+  }
+}
+
+@page cover {
+  margin: 0;
+  @bottom-center { content: none; }
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: #fff;
+}
+
+body {
+  font-family: 'Noto Serif CJK KR', 'Noto Serif KR', 'Nanum Myeongjo', 'Batang', serif;
+  font-size: 10.6pt;
+  line-height: 1.85;
+  color: var(--ink);
+  word-break: keep-all;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+p { margin: 0 0 0.75em; }
+
+/* 표지 */
+.cover {
+  page: cover;
+  width: 210mm;
+  height: 297mm;
+  padding: 9mm;
+}
+.cover .frame {
+  height: 100%;
+  border: 0.7pt solid var(--gold);
+  padding: 1.6mm;
+}
+.cover .frame-inner {
+  height: 100%;
+  border: 0.7pt solid var(--gold);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+.cover .day { font-size: 9pt; letter-spacing: 0.4em; color: var(--gold); margin-bottom: 9mm; }
+.cover .cross { font-size: 20pt; color: var(--gold); margin-bottom: 6mm; line-height: 1; }
+.cover .title { font-size: 30pt; font-weight: 700; letter-spacing: 0.35em; margin: 0 0 7mm 0.35em; line-height: 1.3; }
+.cover .sub { font-size: 10.5pt; letter-spacing: 0.15em; color: var(--sub); margin-bottom: 16mm; }
+.cover .readings { font-size: 10pt; color: var(--accent); line-height: 1.9; margin-bottom: 16mm; }
+.cover .date { font-size: 9pt; letter-spacing: 0.15em; color: var(--sub); }
+
+/* 섹션 머리 */
+.section { break-before: page; }
+.section.prologue { break-before: auto; }
+.section.flow-oneline .oneline-head { margin-top: 12mm; }
+.eyebrow {
+  text-align: center;
+  font-size: 7.5pt;
+  letter-spacing: 0.45em;
+  color: var(--gold);
+  margin: 0 0 1mm;
+}
+.section-title {
+  text-align: center;
+  font-size: 16pt;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  margin: 0;
+  line-height: 1.5;
+}
+.divider {
+  width: 13mm;
+  border-top: 0.7pt solid var(--gold);
+  margin: 4mm auto 9mm;
+}
+
+/* 성경 인용 */
+.verse {
+  background: var(--quote-bg);
+  border-left: 2.2pt solid var(--accent);
+  padding: 4.5mm 6mm;
+  margin: 0 0 4mm;
+  font-size: 10.6pt;
+  line-height: 1.9;
+}
+.verse .ref { text-align: right; font-size: 8.5pt; color: var(--sub); margin: 1.5mm 0 0; }
+.prologue .note { text-align: center; color: var(--sub); font-size: 9.6pt; margin-top: 10mm; }
+
+/* 이정표 */
+.milestone {
+  display: flex;
+  gap: 5mm;
+  margin: 0 0 9mm;
+  break-inside: avoid;
+}
+.milestone .no { flex: 0 0 7mm; font-size: 20pt; line-height: 1.1; color: var(--accent); }
+.milestone .body { flex: 1; }
+.milestone h3 { font-size: 12.5pt; margin: 0.5mm 0 1.5mm; line-height: 1.5; }
+.milestone .question { font-size: 8.8pt; color: var(--sub); margin-bottom: 3mm; }
+.milestone .text p { text-align: justify; }
+.milestone .remember {
+  border-left: 1.8pt solid var(--gold);
+  padding: 0.5mm 0 0.5mm 4mm;
+  color: var(--accent);
+  margin-top: 3mm;
+}
+
+/* 나의 묵상 흐름 */
+.flow-steps {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2mm;
+  margin: 0 0 6mm;
+}
+.flow-steps .step {
+  border: 0.7pt solid var(--gold);
+  padding: 1.2mm 3mm;
+  font-size: 9pt;
+  color: var(--accent);
+}
+.flow-steps .arrow { color: var(--gold); font-size: 9pt; }
+.flow-note { text-align: center; font-size: 9.6pt; }
+
+/* 한 줄로 기억하기 */
+.oneline-list { width: 82%; margin: 0 auto 6mm; border-collapse: collapse; }
+.oneline-list td { padding: 2.2mm 0; border-bottom: 0.5pt solid var(--line); font-size: 9.6pt; vertical-align: top; }
+.oneline-list td.n { width: 9mm; color: var(--gold); }
+.oneline-close { text-align: center; color: var(--sub); font-size: 9.2pt; }
+
+/* 다시 펼쳐 볼 때의 물음 */
+.reflection .intro { text-align: center; font-size: 9pt; color: var(--sub); margin-bottom: 8mm; }
+.question-block { break-inside: avoid; margin-bottom: 7mm; }
+.question-block .q { font-weight: 700; font-size: 10pt; margin-bottom: 2mm; }
+.question-block .write-line { height: 9mm; border-bottom: 0.5pt solid var(--line); }
+.reflection .closing { text-align: center; font-size: 9pt; color: var(--sub); margin-top: 12mm; }
+
+/* 근거 */
+.references h4 { font-size: 10pt; color: var(--accent); margin: 4mm 0 1mm; }
+.references ul { margin: 0; padding-left: 5mm; }
+.references li { font-size: 8.4pt; line-height: 1.68; color: var(--sub); margin-bottom: 0.5mm; }
