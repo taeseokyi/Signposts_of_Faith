@@ -7,7 +7,7 @@ style 속성에 직접 쓰고 레이아웃은 표로 짠다. 사이트가 휴대
 import re
 from html.parser import HTMLParser
 
-from content import NOTE_CAPTION, SITE_URL, date_label, inline, lines_html
+from content import date_label, inline, lines_html
 
 FONT = "font-family:'Noto Serif KR','Nanum Myeongjo','나눔명조','Batang','바탕',serif;"
 
@@ -32,7 +32,6 @@ EYEBROWS = {
     'flow': 'MY FLOW',
     'oneline': 'IN ONE LINE',
     'reflection': 'REFLECTION',
-    'notebook': 'NOTEBOOK',
     'references': 'REFERENCES',
 }
 
@@ -137,15 +136,6 @@ def render(data):
     out.append(table(rows, margin='0 0 28px'))
     for lines in r['paras']:
         out.append(p(lines_html(lines), SIZE['small'], c['sub'], text_align='center'))
-
-    # 묵상 노트 사진 (웹사이트에 올라간 이미지를 불러온다)
-    if data['notes']:
-        out.append(section_head('notebook', '묵상 노트'))
-        day = data['date'].isoformat()
-        for note in data['notes']:
-            src = f'{SITE_URL}{day}/{note["file"]}'
-            out.append(f'<p style="text-align:center;margin:0 0 10px;"><img src="{src}" alt="손글씨 묵상 노트" style="width:100%;max-width:720px;border:1px solid {c["line"]};"></p>')
-        out.append(p(NOTE_CAPTION, SIZE['min'], c['sub'], text_align='center'))
 
     # 근거
     out.append(section_head('references', '근거'))
