@@ -208,8 +208,8 @@ def parse(path):
     if n and not data['milestones_title']:
         count = KOREAN_COUNT[n] if n < len(KOREAN_COUNT) else str(n)
         data['milestones_title'] = f'{count} 개의 이정표'
-    if n and not 5 <= n <= 8:
-        problems.append(('주의', f'이정표가 {n}개입니다. (3장 분량 기준: 5~8개)'))
+    if n and not 3 <= n <= 8:
+        problems.append(('주의', f'이정표가 {n}개입니다. (3장 분량 기준: 3~8개)'))
     return data
 
 
