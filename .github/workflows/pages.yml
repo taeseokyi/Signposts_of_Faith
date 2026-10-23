@@ -27,10 +27,28 @@ jobs:
           python-version: '3.12'
           cache: pip
 
-      - name: 한글 글꼴 설치 (Noto Serif CJK KR)
+      # 한중일 글꼴 꾸러미 전체(apt fonts-noto-cjk) 대신 한국어 명조 두 파일만 받아 캐시해 둔다.
+      - name: 한글 글꼴 캐시
+        id: fonts
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/fonts/noto-serif-cjk-kr
+          key: noto-serif-cjk-kr-v1
+
+      - name: 한글 글꼴 내려받기 (Noto Serif CJK KR)
+        if: steps.fonts.outputs.cache-hit != 'true'
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends fonts-noto-cjk
+          dir=~/.local/share/fonts/noto-serif-cjk-kr
+          mkdir -p "$dir"
+          for w in Regular Bold; do
+            curl -fsSL --retry 3 -o "$dir/NotoSerifCJKkr-$w.otf" \
+              "https://raw.githubusercontent.com/notofonts/noto-cjk/main/Serif/OTF/Korean/NotoSerifCJKkr-$w.otf"
+          done
+
+      - name: 한글 글꼴 등록
+        run: |
+          fc-cache -f ~/.local/share/fonts
+          fc-list | grep -q "Noto Serif CJK KR" || { echo "Noto Serif CJK KR 글꼴이 없습니다"; exit 1; }
 
       - name: 파이썬 패키지 설치
         run: pip install -r requirements.txt
