@@ -3,6 +3,8 @@
     python template/build.py 2026-10-21          content.md → board.html, PDF
     python template/build.py 2026-10-21 --board  게시판용 HTML만 (PDF 생략)
     python template/build.py new 2026-10-24      새 날짜 폴더와 content.md 뼈대 만들기
+    python template/build.py site                웹사이트를 _site/ 에 (GitHub Actions가 쓴다)
+    python template/build.py site --no-pdf       웹사이트를 PDF 없이 빠르게
 
 결과는 모두 날짜 폴더(예: 2026-10-21/) 안에 생긴다.
   board.html          게시판 HTML 모드에 붙여넣을 본문
@@ -85,16 +87,28 @@ def cmd_build(day, board_only=False, keep_html=False):
         print(f'  [주의] 본문이 {body_pages}쪽입니다. (3장 분량 기준: 6~8쪽)')
 
 
+def cmd_site(out, with_pdf):
+    import website
+    out = Path(out) if Path(out).is_absolute() else ROOT / out
+    print(f'웹사이트 만드는 중: {out}')
+    entries = website.build_site(ROOT, out, with_pdf=with_pdf)
+    print(f'묵상 {len(entries)}개 → {out / "index.html"}')
+
+
 def main():
     parser = argparse.ArgumentParser(description='신앙의 이정표 빌드')
-    parser.add_argument('args', nargs='+', help='YYYY-MM-DD  또는  new YYYY-MM-DD')
+    parser.add_argument('args', nargs='+', help='YYYY-MM-DD  /  new YYYY-MM-DD  /  site')
     parser.add_argument('--board', action='store_true', help='게시판용 HTML만 만든다')
     parser.add_argument('--keep-html', action='store_true', help='PDF용 중간 HTML을 날짜 폴더에 남긴다')
+    parser.add_argument('--no-pdf', action='store_true', help='site: 인쇄용 PDF를 만들지 않는다')
+    parser.add_argument('--out', default='_site', help='site: 결과 폴더 (기본 _site)')
     a = parser.parse_args()
     if sys.stdout.encoding and sys.stdout.encoding.lower() not in ('utf-8', 'utf8'):
         sys.stdout.reconfigure(encoding='utf-8')
     try:
-        if a.args[0] == 'new' and len(a.args) == 2:
+        if a.args == ['site']:
+            cmd_site(a.out, with_pdf=not a.no_pdf)
+        elif a.args[0] == 'new' and len(a.args) == 2:
             cmd_new(a.args[1])
         elif len(a.args) == 1:
             cmd_build(a.args[0], board_only=a.board, keep_html=a.keep_html)

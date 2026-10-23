@@ -3,6 +3,7 @@
 매일 미사 독서·복음으로 묵상하고, 그 내용을 두 가지로 내놓는 작업의 절차와 기준입니다.
 
 - **게시** — 굿뉴스 「우리들의 묵상/체험」 게시판에 새 글로 올린다. (주된 산출물)
+- **웹사이트** — GitHub에 push하면 웹사이트에 자동으로 실린다. (5장 "웹사이트")
 - **보관** — 같은 내용을 A4 인쇄용 PDF로 만들어 이 폴더에 둔다.
 
 | | |
@@ -10,6 +11,8 @@
 | 첫 작업일 | 2026-10-21 (연중 제29주간 수요일) |
 | 저장 위치 | `E:\cygwin64\home\ower\work\Signposts_of_Faith` |
 | 게시판 | 「우리들의 묵상/체험」 <https://maria.catholic.or.kr/mi_pr/missa/bbs_list.asp?menu=4770> |
+| 웹사이트 | <https://taeseokyi.github.io/Signposts_of_Faith/> |
+| 저장소 | <https://github.com/taeseokyi/Signposts_of_Faith> (공개) |
 | 전례일 기준 | 주교회의 매일미사 (<https://maria.catholic.or.kr/mi_pr/missa/missa.asp>) |
 
 ---
@@ -29,7 +32,7 @@
 6. **내용 확정** — `YYYY-MM-DD/content.md`에 그날 내용을 정리한다. 여기까지가 글이고, 아래는 출력이다. (새 날짜는 `python template/build.py new YYYY-MM-DD`로 뼈대를 만든다)
 7. **두 출력 만들기** — `python template/build.py YYYY-MM-DD` 한 번으로 게시판용 HTML과 인쇄용 PDF가 함께 나온다. (4장, 5장)
 8. **게시** — 게시판에 새 글로 올린다. (6장)
-9. **기록** — 8장에 날짜·독서·이정표·**글 번호와 URL**을 남기고, git에 커밋한다. (5장 "Git")
+9. **기록** — 8장에 날짜·독서·이정표·**글 번호와 URL**을 남기고, 커밋해서 push한다. push하면 웹사이트에도 실린다. (5장 "Git", "웹사이트")
 
 > 5~6단계를 건너뛰고 바로 출력으로 가지 않는다. 공개된 글은 고쳐도 이미 읽은 사람에게는 돌아가지 않는다.
 
@@ -120,14 +123,19 @@
 
 ```
 Signposts_of_Faith/
+├── README.md                    ← GitHub 첫 화면 소개
 ├── WORKFLOW.md                  ← 이 문서
+├── requirements.txt             ← 파이썬 패키지 (pymupdf)
+├── .github/workflows/pages.yml  ← 웹사이트 자동 배포
 ├── template/                    ← 매일 다시 짜지 않기 위한 공용 자산
 │   ├── build.py                   실행 파일 (아래 "빌드")
 │   ├── content.py                 content.md 읽기와 검사
 │   ├── content_template.md        새 날짜의 content.md 뼈대
 │   ├── board_inline.py            게시판용 HTML (4.3)
 │   ├── print_pdf.py               인쇄용 PDF (4.2)
-│   └── print.css                  인쇄용 스타일
+│   ├── print.css                  인쇄용 스타일
+│   ├── website.py                 웹사이트 (아래 "웹사이트")
+│   └── web.css                    웹사이트 스타일
 └── 2026-10-21/
     ├── content.md               ← 그날 내용 (글의 원본, 이것만 고친다)
     ├── board.html               ← 게시판 HTML 모드에 붙여넣을 본문
@@ -148,12 +156,13 @@ Signposts_of_Faith/
 python template/build.py new 2026-10-24      # 새 날짜 폴더, content.md 뼈대, 노트/ 만들기
 python template/build.py 2026-10-24          # board.html + PDF + 게시정보.txt
 python template/build.py 2026-10-24 --board  # 게시판용만 빠르게 (PDF 생략)
+python template/build.py site                # 웹사이트를 _site/ 에 (--no-pdf 로 빠르게)
 ```
 
 - 필요한 것: Python 3, PyMuPDF(`pymupdf`), Edge 또는 Chrome. 다른 경로의 브라우저는 `SIGNPOSTS_BROWSER` 환경 변수로 지정한다.
 - 빌드는 먼저 `content.md`를 검사한다. **[오류]**가 있으면 아무것도 만들지 않고 멈추며, **[주의]**는 알려 주기만 한다. (빠진 물음·기억·한 줄, 장절 없는 성경 구절, 이정표 5~8개, 성찰 물음 3~4개, 본문 8쪽 초과, 제목 55자 초과 등)
 - `content.md` 형식은 `template/content_template.md`와 `2026-10-21/content.md`를 본보기로 삼는다.
-  - 머리말(`---` 사이): 날짜, 전례일, 전례시기, 부제, 복음장절, 독서, 태그, 게시번호, 게시주소. 요일과 제목은 날짜·부제에서 자동으로 만들어진다.
+  - 머리말(`---` 사이): 날짜, 전례일, 전례시기, 부제, 복음장절, 독서, 태그, 공개, 게시번호, 게시주소. 요일과 제목은 날짜·부제에서 자동으로 만들어진다.
   - `# 여는 말씀`: `> 구절` 줄들과 `> — 장절` 한 줄, 그리고 취지 문단
   - `# 이정표`: `## 제목` 아래 `물음:`, 본문 문단, `기억:`, `한 줄:`. 제목 "여덟 개의 이정표"는 개수에 맞춰 자동으로 붙는다.
   - `# 나의 묵상 흐름`: `흐름: 초대 → 만남 → …`과 결론 문단
@@ -167,7 +176,8 @@ python template/build.py 2026-10-24 --board  # 게시판용만 빠르게 (PDF �
 
 이 폴더는 git 저장소다 (2026-10-23 시작, 브랜치 `main`). 원칙과 사양, 그날의 글이 언제 왜 바뀌었는지 남기기 위해서다.
 
-- 원격: GitHub **비공개** 저장소 <https://github.com/taeseokyi/Signposts_of_Faith> (`origin`)
+- 원격: GitHub 저장소 <https://github.com/taeseokyi/Signposts_of_Faith> (`origin`)
+- **공개 저장소다.** 처음엔 비공개였으나 무료 요금제에서 GitHub Pages를 쓰려고 2026-10-23에 공개로 바꿨다. WORKFLOW.md, `template/`, 모든 `content.md`, 커밋 이력(작성자 이메일 포함)을 누구나 볼 수 있다.
 
 | 저장소에 넣는 것 | 넣지 않는 것 (`.gitignore`) |
 |---|---|
@@ -188,6 +198,18 @@ git push
   - `YYYY-MM-DD 묵상: 부제` — 그날의 글 (content.md, 8장 기록)
   - `WORKFLOW: …` — 작업 원칙·절차·사양을 바꿀 때. 왜 바꾸는지 본문에 한두 줄 적는다
   - `template: …` — 빌드 코드를 고칠 때
+
+### 웹사이트
+
+<https://taeseokyi.github.io/Signposts_of_Faith/> — GitHub Pages. `main`에 push할 때마다 자동으로 다시 배포된다.
+
+- 배포: `.github/workflows/pages.yml`이 Ubuntu에서 한글 글꼴(Noto Serif CJK KR)을 깔고 `python template/build.py site`를 돌려 `_site/`를 Pages에 올린다. 몇 분 걸린다. 진행과 실패는 저장소의 **Actions** 탭에서 본다.
+- 사이트 구성: 첫 화면은 묵상 목록(최신순). 날짜마다 한 쪽(`/2026-10-21/`)이고, 쪽 아래에 인쇄용 PDF 내려받기, 굿뉴스 게시글 링크, 이전·다음 묵상이 있다.
+- 본문 마크업은 인쇄용 PDF와 같은 것(`print_pdf.sections_html`)을 쓰고 스타일만 `web.css`로 바꾼다. 휴대폰에서도 바로 읽히는 반응형이다. (게시판처럼 축소되지 않는다)
+- 싣지 않을 날: 머리말에 `공개: 아니오`. 다만 **저장소가 공개라서 `content.md`는 GitHub에서 보인다.** 아직 내보이고 싶지 않은 초안은 push하지 않는다.
+- `content.md`에 [오류]가 있는 날은 건너뛰고 나머지만 배포한다.
+- 2장 공개 게시 원칙(AI 대화 고지, 실명·개인사 쓰지 않기)은 웹사이트에도 똑같이 적용된다. 사이트의 모든 쪽 아래에 AI 대화에서 나온 글이라는 안내가 붙는다.
+- 로컬에서 미리 보기: `python template/build.py site` 후 `python -m http.server 8765 --directory _site` → <http://localhost:8765/>
 
 ## 6. 게시 절차
 

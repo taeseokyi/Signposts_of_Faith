@@ -3,15 +3,16 @@
 표지와 본문을 각각 HTML로 만들고, 설치된 Edge(또는 Chrome)를 헤드리스로 돌려
 PDF로 찍은 뒤 PyMuPDF로 합친다. 따로 찍는 이유는 본문 쪽 번호를 1부터 매기고
 표지에는 여백과 쪽 번호를 두지 않기 위해서다.
+
+본문 마크업(sections_html)은 웹사이트(website.py)도 같이 쓴다.
 """
 import html
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
-
-import pymupdf
 
 from content import date_label, inline, lines_html
 
@@ -23,6 +24,7 @@ BROWSER_CANDIDATES = [
     r'C:\Program Files\Google\Chrome\Application\chrome.exe',
     os.path.expandvars(r'%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe'),
 ]
+BROWSER_COMMANDS = ['google-chrome', 'google-chrome-stable', 'chromium', 'chromium-browser', 'msedge']
 
 
 def find_browser():
@@ -30,6 +32,9 @@ def find_browser():
     for path in ([env] if env else []) + BROWSER_CANDIDATES:
         if path and Path(path).is_file():
             return path
+    for name in BROWSER_COMMANDS:  # Linux (GitHub Actions)
+        if shutil.which(name):
+            return shutil.which(name)
     raise RuntimeError('Edge나 Chrome을 찾지 못했습니다. SIGNPOSTS_BROWSER 환경 변수에 경로를 지정하세요.')
 
 
@@ -64,6 +69,11 @@ def _head(eyebrow, title):
 
 
 def body_html(data):
+    return _document(data, sections_html(data))
+
+
+def sections_html(data):
+    """여는 말씀부터 근거까지의 본문 마크업. 인쇄용 PDF와 웹사이트가 같이 쓴다."""
     out = []
 
     out.append('<section class="section prologue">' + _head('PROLOGUE', '여는 말씀'))
@@ -111,7 +121,7 @@ def body_html(data):
         out.append(f'<h4>{inline(group["title"])}</h4><ul>{items}</ul>')
     out.append('</section>')
 
-    return _document(data, ''.join(out))
+    return ''.join(out)
 
 
 def html_to_pdf(browser, html_path, pdf_path, profile_dir):
@@ -124,8 +134,10 @@ def html_to_pdf(browser, html_path, pdf_path, profile_dir):
         '--no-pdf-header-footer',
         f'--user-data-dir={profile_dir}',
         f'--print-to-pdf={pdf_path}',
-        Path(html_path).as_uri(),
     ]
+    if sys.platform != 'win32':  # GitHub Actions(Ubuntu)에서는 샌드박스를 쓸 수 없다
+        cmd += ['--no-sandbox', '--disable-dev-shm-usage']
+    cmd.append(Path(html_path).as_uri())
     subprocess.run(cmd, check=True, timeout=120, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     if not Path(pdf_path).is_file():
         raise RuntimeError(f'PDF가 만들어지지 않았습니다: {html_path}')
@@ -133,6 +145,8 @@ def html_to_pdf(browser, html_path, pdf_path, profile_dir):
 
 def build(data, out_pdf, keep_html_dir=None):
     """PDF를 만들고 (전체 쪽수, 본문 쪽수)를 돌려준다."""
+    import pymupdf
+
     browser = find_browser()
     with tempfile.TemporaryDirectory(prefix='signposts_') as tmp:
         tmp = Path(tmp)

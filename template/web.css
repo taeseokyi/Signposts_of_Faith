@@ -1,0 +1,140 @@
+/* 웹사이트 (template/website.py). 색상 변수는 쪽마다 전례 시기에 맞춰 들어간다.
+   본문 마크업은 인쇄용 PDF와 같은 것(print_pdf.sections_html)을 쓴다. */
+
+:root {
+  --accent: #5a6b3a;
+  --gold: #a88a4f;
+  --ink: #2a2622;
+  --sub: #6b625a;
+  --line: #d9d1c3;
+  --quote-bg: #f6f3ec;
+}
+
+* { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: #fff;
+  color: var(--ink);
+  font-family: 'Noto Serif KR', 'Noto Serif CJK KR', 'Nanum Myeongjo', '나눔명조', 'Batang', '바탕', serif;
+  font-size: 17px;
+  line-height: 1.85;
+  word-break: keep-all;
+  overflow-wrap: break-word;
+}
+
+a { color: var(--accent); }
+p { margin: 0 0 14px; }
+
+.wrap { max-width: 720px; margin: 0 auto; padding: 0 20px; }
+
+.topnav { padding: 18px 0 0; font-size: 14px; }
+.topnav a { text-decoration: none; color: var(--sub); }
+
+/* 표지 */
+.hero { margin: 20px 0 8px; border: 1px solid var(--gold); padding: 6px; }
+.hero-inner { border: 1px solid var(--gold); padding: 48px 20px; text-align: center; }
+.hero .day { font-size: 14px; letter-spacing: 0.3em; color: var(--gold); margin-bottom: 18px; }
+.hero .cross { font-size: 22px; line-height: 1; color: var(--gold); margin-bottom: 14px; }
+.hero .site-name { font-size: 15px; letter-spacing: 0.4em; color: var(--sub); margin-bottom: 6px; }
+.hero h1 { font-size: 28px; line-height: 1.45; margin: 0 0 22px; letter-spacing: 0.06em; }
+.hero h1.site-title { font-size: 32px; letter-spacing: 0.35em; margin-right: -0.35em; }
+.hero .readings { font-size: 16px; color: var(--accent); margin: 0; }
+.hero .date { font-size: 14px; letter-spacing: 0.12em; color: var(--sub); margin: 20px 0 0; }
+
+/* 섹션 머리 */
+.section { margin-top: 64px; }
+.eyebrow { text-align: center; font-size: 13px; letter-spacing: 0.4em; color: var(--gold); margin: 0 0 4px; }
+.section-title { text-align: center; font-size: 24px; letter-spacing: 0.08em; line-height: 1.5; margin: 0; }
+.divider { width: 48px; border-top: 1px solid var(--gold); margin: 12px auto 28px; }
+
+/* 성경 인용 */
+.verse {
+  background: var(--quote-bg);
+  border-left: 3px solid var(--accent);
+  padding: 18px 20px;
+  margin: 0 0 14px;
+  line-height: 1.9;
+}
+.verse .ref { text-align: right; font-size: 14px; color: var(--sub); margin: 6px 0 0; }
+.prologue .note { text-align: center; font-size: 15px; color: var(--sub); margin-top: 26px; }
+
+/* 이정표 */
+.milestone { display: flex; gap: 14px; margin: 0 0 44px; }
+.milestone .no { flex: 0 0 32px; font-size: 30px; line-height: 1.15; color: var(--accent); }
+.milestone .body { flex: 1; min-width: 0; }
+.milestone h3 { font-size: 20px; line-height: 1.5; margin: 2px 0 6px; }
+.milestone .question { font-size: 15px; color: var(--sub); line-height: 1.7; margin: 0 0 16px; }
+.milestone .remember { border-left: 3px solid var(--gold); padding: 2px 0 2px 16px; color: var(--accent); margin-top: 6px; }
+
+/* 나의 묵상 흐름 */
+.flow-steps { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 6px; margin: 0 0 22px; }
+.flow-steps .step { border: 1px solid var(--gold); padding: 5px 10px; font-size: 15px; line-height: 1.4; color: var(--accent); }
+.flow-steps .arrow { font-size: 14px; color: var(--gold); }
+.flow-note { text-align: center; }
+
+/* 한 줄로 기억하기 */
+.oneline-head { margin-top: 64px; }
+.oneline-list { width: 100%; border-collapse: collapse; margin: 0 0 22px; }
+.oneline-list td { padding: 10px 0; border-bottom: 1px solid var(--line); vertical-align: top; line-height: 1.7; }
+.oneline-list td.n { width: 32px; font-size: 15px; color: var(--gold); }
+.oneline-close { text-align: center; font-size: 15px; color: var(--sub); }
+
+/* 다시 펼쳐 볼 때의 물음 */
+.reflection .intro { text-align: center; font-size: 15px; color: var(--sub); margin: 0 0 18px; }
+.question-block { padding: 14px 4px; border-bottom: 1px solid var(--line); }
+.question-block .q { margin: 0; }
+.question-block .write-line { display: none; }  /* 손글씨 칸은 인쇄본에만 */
+.reflection .closing { text-align: center; font-size: 15px; color: var(--sub); margin-top: 28px; }
+
+/* 근거 */
+.references h4 { font-size: 16px; color: var(--accent); margin: 24px 0 6px; }
+.references ul { margin: 0; padding-left: 20px; }
+.references li { font-size: 14px; line-height: 1.8; color: var(--sub); margin: 0 0 4px; }
+
+/* 쪽 아래 */
+.day-foot { margin: 64px 0 0; padding-top: 28px; border-top: 1px solid var(--line); }
+.actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-bottom: 28px; }
+.button {
+  display: inline-block;
+  border: 1px solid var(--gold);
+  padding: 8px 18px;
+  font-size: 15px;
+  color: var(--accent);
+  text-decoration: none;
+}
+.button:hover { background: var(--quote-bg); }
+.pager { display: flex; justify-content: space-between; gap: 16px; }
+.pager a { flex: 1; text-decoration: none; color: var(--ink); font-size: 16px; line-height: 1.5; }
+.pager a small { display: block; font-size: 13px; color: var(--gold); letter-spacing: 0.05em; }
+.pager .newer { text-align: right; }
+.back { text-align: center; font-size: 15px; margin: 28px 0 0; }
+.site-foot { text-align: center; font-size: 13px; line-height: 1.7; color: var(--sub); margin: 48px 0 40px; }
+
+/* 목록 */
+.about { text-align: center; font-size: 15px; color: var(--sub); margin: 28px 0 36px; }
+.entries { list-style: none; margin: 0 0 64px; padding: 0; border-top: 1px solid var(--line); }
+.entry a { display: block; padding: 20px 2px; border-bottom: 1px solid var(--line); color: var(--ink); text-decoration: none; }
+.entry a:hover { background: var(--quote-bg); }
+.entry span { display: block; }
+.entry .date { font-size: 14px; color: var(--gold); letter-spacing: 0.04em; }
+.entry .title { font-size: 21px; font-weight: 700; line-height: 1.5; margin: 2px 0; }
+.entry .meta { font-size: 14px; color: var(--sub); }
+.entry .line { font-size: 15px; color: var(--accent); margin-top: 6px; }
+
+@media (max-width: 480px) {
+  body { font-size: 16px; }
+  .wrap { padding: 0 16px; }
+  .hero-inner { padding: 36px 14px; }
+  .hero h1 { font-size: 24px; }
+  .hero h1.site-title { font-size: 26px; letter-spacing: 0.25em; margin-right: -0.25em; }
+  .milestone { gap: 10px; }
+  .milestone .no { flex-basis: 24px; font-size: 24px; }
+  .verse { padding: 16px; }
+}
+
+@media print {
+  .topnav, .day-foot, .site-foot { display: none; }
+}

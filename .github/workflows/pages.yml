@@ -1,0 +1,55 @@
+# main에 push될 때마다 웹사이트를 빌드해 GitHub Pages에 배포한다.
+# 빌드: python template/build.py site  (날짜 폴더의 content.md → _site/, 인쇄용 PDF 포함)
+name: 웹사이트 배포
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: 한글 글꼴 설치 (Noto Serif CJK KR)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends fonts-noto-cjk
+
+      - name: 파이썬 패키지 설치
+        run: pip install -r requirements.txt
+
+      - name: 웹사이트 빌드
+        run: python template/build.py site
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-24.04
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
