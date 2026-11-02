@@ -493,4 +493,24 @@ async function main() {
 if ("serviceWorker" in navigator && location.protocol === "https:") {
   navigator.serviceWorker.register("sw.js").catch(() => {});
 }
+
+// 크롬이 "설치할 수 있다"고 알려 오면 머리글에 설치 버튼을 보입니다. (바탕화면·시작 메뉴 바로가기와 아이콘이 생깁니다)
+let installPrompt = null;
+window.addEventListener("beforeinstallprompt", (e) => {
+  e.preventDefault();
+  installPrompt = e;
+  $("btn-install").hidden = false;
+});
+$("btn-install").addEventListener("click", async () => {
+  if (!installPrompt) return;
+  installPrompt.prompt();
+  await installPrompt.userChoice.catch(() => {});
+  installPrompt = null;
+  $("btn-install").hidden = true;
+});
+window.addEventListener("appinstalled", () => {
+  $("btn-install").hidden = true;
+  toast("앱으로 설치했습니다.");
+});
+
 main();
