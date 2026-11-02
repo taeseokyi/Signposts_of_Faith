@@ -1,0 +1,124 @@
+:root {
+  --accent: #5a6b3a;
+  --gold: #a88a4f;
+  --ink: #2a2622;
+  --sub: #6b625a;
+  --line: #d9d1c3;
+  --bg: #f6f3ec;
+  --panel: #fffdf9;
+  --bad: #8a2f2f;
+  --warn: #8a6d2f;
+  --ok: #3f6b3a;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ink: #eae4d8;
+    --sub: #b3a996;
+    --line: #4a443b;
+    --bg: #1d1b18;
+    --panel: #26231f;
+    --gold: #c4a76a;
+    --accent: #8fa468;
+    --ok: #8fc48a;
+    --warn: #d9b36a;
+    --bad: #e08a8a;
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--ink); }
+body {
+  font-family: 'Noto Serif KR', 'Nanum Myeongjo', '나눔명조', 'Batang', '바탕', serif;
+  font-size: 16px;
+  line-height: 1.6;
+  word-break: keep-all;
+  padding-bottom: 60px;
+}
+.top {
+  position: sticky; top: 0; z-index: 5;
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 14px; padding-top: calc(10px + env(safe-area-inset-top));
+  background: var(--accent); color: #fff;
+}
+.top h1 { flex: 1; margin: 0; font-size: 18px; font-weight: 700; letter-spacing: 0.02em; }
+.top h1 small { font-weight: 400; opacity: 0.85; margin-left: 4px; }
+.icon-btn { background: transparent; border: 0; color: #fff; font-size: 22px; padding: 2px 8px; cursor: pointer; }
+.conn { width: 12px; height: 12px; border-radius: 50%; background: #999; display: inline-block; text-indent: -999px; overflow: hidden; }
+.conn.ok { background: #9fd48f; }
+.conn.bad { background: #e08a8a; }
+
+main { max-width: 760px; margin: 0 auto; padding: 12px 16px; }
+.panel {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+  padding: 14px 16px; margin-bottom: 14px;
+}
+h2 { font-size: 17px; margin: 0 0 8px; display: flex; align-items: center; gap: 8px; }
+h3 { font-size: 15px; margin: 14px 0 6px; color: var(--sub); }
+.num {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 26px; height: 26px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 14px;
+}
+.badge { font-size: 12px; color: var(--sub); border: 1px solid var(--line); border-radius: 999px; padding: 1px 8px; margin-left: auto; }
+.badge.ok { color: var(--ok); border-color: var(--ok); }
+.badge.warn { color: var(--warn); border-color: var(--warn); }
+.badge.bad { color: var(--bad); border-color: var(--bad); }
+.hint { font-size: 14px; color: var(--sub); margin: 4px 0 8px; }
+code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 0.92em; }
+
+label { display: block; font-size: 14px; color: var(--sub); margin: 8px 0; }
+input[type=text], input[type=password], input[type=date], textarea {
+  display: block; width: 100%; margin-top: 4px;
+  font: inherit; font-size: 15px; color: var(--ink); background: var(--bg);
+  border: 1px solid var(--line); border-radius: 8px; padding: 10px;
+}
+textarea { resize: vertical; line-height: 1.5; }
+#content, .md { font-family: ui-monospace, Menlo, Consolas, 'Noto Sans KR', monospace; font-size: 14px; }
+.row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 8px 0; }
+.row input[type=date] { width: auto; margin: 0; }
+button, .file-btn {
+  font: inherit; font-size: 15px; cursor: pointer;
+  border: 1px solid var(--line); border-radius: 8px; padding: 9px 14px;
+  background: var(--panel); color: var(--ink);
+}
+button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+button.danger { background: var(--bad); border-color: var(--bad); }
+button:disabled { opacity: 0.5; cursor: wait; }
+button.link { background: none; border: 0; color: var(--gold); font-size: 13px; padding: 0 4px; margin-left: auto; }
+.file-btn { display: inline-block; position: relative; overflow: hidden; }
+.file-btn input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+
+.days { list-style: none; margin: 0; padding: 0; }
+.days li { border-top: 1px solid var(--line); padding: 10px 0; cursor: pointer; display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: baseline; }
+.days li:first-child { border-top: 0; }
+.days .date { font-weight: 700; }
+.days .sub { color: var(--sub); flex-basis: 100%; font-size: 14px; }
+.days .tag { font-size: 12px; color: var(--sub); border: 1px solid var(--line); border-radius: 999px; padding: 0 7px; }
+.days .tag.ok { color: var(--ok); border-color: var(--ok); }
+.days .tag.run { color: var(--warn); border-color: var(--warn); }
+.days .tag.bad { color: var(--bad); border-color: var(--bad); }
+
+.thumbs { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.thumb { position: relative; width: 110px; }
+.thumb img { width: 110px; height: 110px; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); display: block; }
+.thumb .name { font-size: 11px; color: var(--sub); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.thumb .kind { position: absolute; top: 4px; left: 4px; font-size: 11px; background: rgba(0,0,0,0.55); color: #fff; padding: 0 6px; border-radius: 999px; }
+.thumb .del { position: absolute; top: 2px; right: 2px; background: rgba(0,0,0,0.55); color: #fff; border: 0; border-radius: 50%; width: 24px; height: 24px; padding: 0; font-size: 14px; line-height: 24px; }
+
+ul.review, ul.problems { margin: 0; padding-left: 20px; font-size: 14px; }
+ul.problems li.오류 { color: var(--bad); }
+ul.problems li.주의 { color: var(--warn); }
+ul.problems:empty::before, ul.review:empty::before { content: "(없음)"; color: var(--sub); margin-left: -20px; }
+details { margin: 10px 0; }
+summary { cursor: pointer; color: var(--gold); }
+pre.md, pre.git {
+  white-space: pre-wrap; word-break: break-word; font-size: 13px;
+  background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 10px; max-height: 50vh; overflow: auto;
+}
+#preview-link { color: var(--gold); }
+#publish-result { font-size: 14px; }
+#publish-result a { color: var(--gold); }
+
+.toast {
+  position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%);
+  background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 999px; font-size: 14px;
+  max-width: 90vw; z-index: 10; box-shadow: 0 4px 16px rgba(0,0,0,0.25);
+}

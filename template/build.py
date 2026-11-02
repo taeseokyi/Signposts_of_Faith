@@ -5,6 +5,9 @@
     python template/build.py new 2026-10-24      새 날짜 폴더와 content.md 뼈대 만들기
     python template/build.py site                웹사이트를 _site/ 에 (GitHub Actions가 쓴다)
     python template/build.py site --no-pdf       웹사이트를 PDF 없이 빠르게
+    python template/build.py check 2026-10-24    content.md 를 검사만 한다 (--json 으로 결과를 JSON 으로)
+    python template/build.py check 초안.md --as 2026-10-24
+                                                 다른 곳에 둔 초안을 그 날짜의 content.md 로 보고 검사
 
 결과는 모두 날짜 폴더(예: 2026-10-21/) 안에 생긴다.
   board.html          게시판 HTML 모드에 붙여넣을 본문
@@ -21,7 +24,6 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
 sys.path.insert(0, str(HERE))
 
-import board_inline  # noqa: E402
 import content  # noqa: E402
 
 
@@ -44,6 +46,45 @@ def cmd_new(day):
     print(f'노트 사진은 {(folder / "노트").relative_to(ROOT)}/ 에 둡니다.')
 
 
+def cmd_check(target, as_day=None, as_json=False):
+    """content.md 를 만들지 않고 검사만 한다. 도우미 앱(server/)이 초안을 검사할 때 쓴다."""
+    import json
+    if as_day:
+        source, folder, day = Path(target), ROOT / as_day, as_day
+    elif target.endswith('.md'):
+        source = Path(target)
+        folder, day = source.parent, source.parent.name
+    else:
+        folder, day = ROOT / target, target
+        source = folder / 'content.md'
+    result = {'file': str(source), 'day': day, 'problems': [], 'title': None, 'pdf': None, 'milestones': 0}
+    try:
+        if not source.is_file():
+            raise content.ContentError(f'파일이 없습니다: {source}')
+        data = content.parse(source, folder=folder)
+        if data['date'].isoformat() != day:
+            data['problems'].append(('오류', f'머리말 날짜({data["date"]})가 폴더 이름({day})과 다릅니다.'))
+        result['problems'] = [list(p) for p in data['problems']]
+        result['milestones'] = len(data['milestones'])
+        try:
+            result['title'] = content.title_of(data)
+            result['pdf'] = content.pdf_name_of(data)
+            if len(result['title']) > 55:
+                result['problems'].append(['주의', f'제목이 {len(result["title"])}자입니다. (최대 55자)'])
+        except KeyError:
+            pass
+    except (content.ContentError, ValueError) as e:
+        result['problems'] = [['오류', str(e)]]
+    result['ok'] = not any(level == '오류' for level, _ in result['problems'])
+    if as_json:
+        print(json.dumps(result, ensure_ascii=False))
+    else:
+        print(f'검사: {source}')
+        report(result['problems'])
+        print('통과' if result['ok'] else '[오류]가 있습니다.')
+    return result['ok']
+
+
 def cmd_build(day, board_only=False, keep_html=False):
     folder = ROOT / day
     source = folder / 'content.md'
@@ -57,6 +98,7 @@ def cmd_build(day, board_only=False, keep_html=False):
     if report(data['problems']):
         sys.exit('content.md를 고친 뒤 다시 실행하세요.')
 
+    import board_inline
     title = content.title_of(data)
     fragment = board_inline.render(data)
     problems = board_inline.check(fragment, title)
@@ -102,6 +144,8 @@ def main():
     parser.add_argument('--keep-html', action='store_true', help='PDF용 중간 HTML을 날짜 폴더에 남긴다')
     parser.add_argument('--no-pdf', action='store_true', help='site: 인쇄용 PDF를 만들지 않는다')
     parser.add_argument('--out', default='_site', help='site: 결과 폴더 (기본 _site)')
+    parser.add_argument('--as', dest='as_day', help='check: 이 파일을 이 날짜(YYYY-MM-DD)의 content.md 로 보고 검사')
+    parser.add_argument('--json', action='store_true', help='check: 결과를 JSON 한 줄로')
     a = parser.parse_args()
     if sys.stdout.encoding and sys.stdout.encoding.lower() not in ('utf-8', 'utf8'):
         sys.stdout.reconfigure(encoding='utf-8')
@@ -110,6 +154,8 @@ def main():
             cmd_site(a.out, with_pdf=not a.no_pdf)
         elif a.args[0] == 'new' and len(a.args) == 2:
             cmd_new(a.args[1])
+        elif a.args[0] == 'check' and len(a.args) == 2:
+            sys.exit(0 if cmd_check(a.args[1], as_day=a.as_day, as_json=a.json) else 2)
         elif len(a.args) == 1:
             cmd_build(a.args[0], board_only=a.board, keep_html=a.keep_html)
         else:

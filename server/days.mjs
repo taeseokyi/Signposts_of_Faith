@@ -1,0 +1,256 @@
+// 날짜 폴더(YYYY-MM-DD/)를 다룹니다. 저장소 작업 폴더 자체가 자료 보관소입니다.
+//
+//   <저장소>/2026-10-24/
+//     대화.md               Claude 와 나눈 대화 원문 (git 제외)
+//     노트/photo-1.jpg      묵상 노트 사진 원본 (git 제외)
+//     note-2026-10-24.jpg   공개용 노트 사진 (커밋됨)
+//     content.md            그날의 글 (커밋됨)
+//   <저장소>/server/data/2026-10-24/
+//     job.json              초안 작업 상태
+//     draft.md              claude 가 낸 초안
+//     record.md             WORKFLOW.md 8장에 붙일 기록
+//     claude-N.log          CLI 원본 출력
+
+import { mkdir, readFile, writeFile, readdir, rm, stat, copyFile, rename } from "node:fs/promises";
+import { join } from "node:path";
+
+export const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
+const IMAGE_RE = /\.(jpe?g|png|webp|heic)$/i;
+const EXT = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/heic": "heic" };
+
+async function exists(p) {
+  return stat(p).then(() => true, () => false);
+}
+
+async function readText(p) {
+  try {
+    return await readFile(p, "utf8");
+  } catch {
+    return null;
+  }
+}
+
+export class Days {
+  constructor(repo, dataDir) {
+    this.repo = repo;
+    this.data = dataDir;
+  }
+
+  dir(date) {
+    return join(this.repo, date);
+  }
+
+  notesDir(date) {
+    return join(this.dir(date), "노트");
+  }
+
+  stateDir(date) {
+    return join(this.data, date);
+  }
+
+  conversationPath(date) {
+    return join(this.dir(date), "대화.md");
+  }
+
+  contentPath(date) {
+    return join(this.dir(date), "content.md");
+  }
+
+  draftPath(date) {
+    return join(this.stateDir(date), "draft.md");
+  }
+
+  recordPath(date) {
+    return join(this.stateDir(date), "record.md");
+  }
+
+  async list() {
+    const entries = await readdir(this.repo, { withFileTypes: true }).catch(() => []);
+    const dates = entries.filter((e) => e.isDirectory() && DAY_RE.test(e.name)).map((e) => e.name);
+    const out = [];
+    for (const date of dates.sort().reverse()) out.push(await this.summary(date));
+    return out;
+  }
+
+  async create(date) {
+    await mkdir(this.notesDir(date), { recursive: true });
+    await mkdir(this.stateDir(date), { recursive: true });
+    return this.summary(date);
+  }
+
+  async exists(date) {
+    return exists(this.dir(date));
+  }
+
+  async summary(date) {
+    const job = await this.job(date);
+    const content = await readText(this.contentPath(date));
+    return {
+      date,
+      hasConversation: await exists(this.conversationPath(date)),
+      noteCount: (await this.notePhotos(date)).length,
+      publicPhotos: await this.publicPhotos(date),
+      hasContent: content != null,
+      subtitle: content ? subtitleOf(content) : null,
+      hasDraft: await exists(this.draftPath(date)),
+      job: job && { status: job.status, attempts: job.attempts, error: job.error, finishedAt: job.finishedAt },
+    };
+  }
+
+  async detail(date) {
+    const base = await this.summary(date);
+    return {
+      ...base,
+      conversation: (await readText(this.conversationPath(date))) ?? "",
+      content: (await readText(this.contentPath(date))) ?? "",
+      notes: await this.notePhotos(date),
+      draft: (await readText(this.draftPath(date))) ?? "",
+      record: (await readText(this.recordPath(date))) ?? "",
+      job: await this.job(date),
+    };
+  }
+
+  // ---------- 대화 ----------
+
+  async writeConversation(date, text) {
+    await mkdir(this.dir(date), { recursive: true });
+    const clean = String(text).replace(/\r\n/g, "\n").trim();
+    if (!clean) {
+      await rm(this.conversationPath(date), { force: true });
+      return false;
+    }
+    await writeFile(this.conversationPath(date), clean + "\n", "utf8");
+    return true;
+  }
+
+  // ---------- 사진 ----------
+
+  async notePhotos(date) {
+    const names = await readdir(this.notesDir(date)).catch(() => []);
+    return names.filter((n) => IMAGE_RE.test(n)).sort(naturalCompare);
+  }
+
+  async publicPhotos(date) {
+    const names = await readdir(this.dir(date)).catch(() => []);
+    return names.filter((n) => n.startsWith("note-") && IMAGE_RE.test(n)).sort(naturalCompare);
+  }
+
+  /**
+   * 사진을 저장합니다.
+   *   kind "note"   → 노트/photo-N.ext  (원본 보관, git 제외)
+   *   kind "public" → note-YYYY-MM-DD.jpg 또는 note-YYYY-MM-DD-N.jpg (웹사이트에 실림)
+   */
+  async addPhoto(date, { kind, mediaType, buffer }) {
+    const ext = EXT[mediaType] ?? "jpg";
+    if (kind === "public") {
+      await mkdir(this.dir(date), { recursive: true });
+      const have = await this.publicPhotos(date);
+      let name = `note-${date}.${ext}`;
+      if (have.length) {
+        // 두 장째부터는 -1, -2 … 를 붙입니다. 첫 장이 번호 없이 있으면 그것을 -1 로 바꿉니다.
+        const first = have.find((n) => n === `note-${date}.jpg` || n === `note-${date}.${ext}`);
+        if (first) {
+          const firstExt = first.split(".").pop();
+          await rename(join(this.dir(date), first), join(this.dir(date), `note-${date}-1.${firstExt}`));
+        }
+        const nums = (await this.publicPhotos(date))
+          .map((n) => Number((/-(\d+)\.\w+$/.exec(n) || [])[1]) || 0);
+        name = `note-${date}-${Math.max(0, ...nums) + 1}.${ext}`;
+      }
+      await writeFile(join(this.dir(date), name), buffer);
+      return name;
+    }
+    await mkdir(this.notesDir(date), { recursive: true });
+    const have = await this.notePhotos(date);
+    const nums = have.map((n) => Number((/^photo-(\d+)\./.exec(n) || [])[1]) || 0);
+    const name = `photo-${Math.max(0, ...nums) + 1}.${ext}`;
+    await writeFile(join(this.notesDir(date), name), buffer);
+    return name;
+  }
+
+  photoPath(date, name) {
+    if (!/^[\w.-]+$/.test(name) || !IMAGE_RE.test(name)) return null;
+    return name.startsWith("note-") ? join(this.dir(date), name) : join(this.notesDir(date), name);
+  }
+
+  async removePhoto(date, name) {
+    const p = this.photoPath(date, name);
+    if (!p) return false;
+    await rm(p, { force: true });
+    return true;
+  }
+
+  // ---------- 초안 작업 ----------
+
+  async job(date) {
+    const raw = await readText(join(this.stateDir(date), "job.json"));
+    try {
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  async saveJob(date, job) {
+    await mkdir(this.stateDir(date), { recursive: true });
+    await writeFile(join(this.stateDir(date), "job.json"), JSON.stringify(job, null, 2), "utf8");
+    return job;
+  }
+
+  async saveDraft(date, { content_md, record_md }) {
+    await mkdir(this.stateDir(date), { recursive: true });
+    await writeFile(this.draftPath(date), content_md, "utf8");
+    await writeFile(this.recordPath(date), record_md ? record_md + "\n" : "", "utf8");
+  }
+
+  logPath(date, attempt) {
+    return join(this.stateDir(date), `claude-${attempt}.log`);
+  }
+
+  /** 초안을 content.md 로 올립니다. 이미 있던 content.md 는 server/data 에 남겨 둡니다. */
+  async applyDraft(date) {
+    const draft = await readText(this.draftPath(date));
+    if (draft == null) throw new Error("초안이 없습니다.");
+    await this.backupContent(date);
+    await writeFile(this.contentPath(date), draft, "utf8");
+    return draft;
+  }
+
+  async writeContent(date, text) {
+    await mkdir(this.dir(date), { recursive: true });
+    await this.backupContent(date);
+    const clean = String(text).replace(/\r\n/g, "\n").trimEnd() + "\n";
+    await writeFile(this.contentPath(date), clean, "utf8");
+    return clean;
+  }
+
+  async backupContent(date) {
+    if (!(await exists(this.contentPath(date)))) return;
+    await mkdir(this.stateDir(date), { recursive: true });
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+    await copyFile(this.contentPath(date), join(this.stateDir(date), `content.${stamp}.md`));
+  }
+
+  /** 본보기로 쓸, 가장 최근에 완성된 다른 날의 content.md (저장소 기준 상대 경로). */
+  async examplePath(exceptDate) {
+    const entries = await readdir(this.repo, { withFileTypes: true }).catch(() => []);
+    const dates = entries
+      .filter((e) => e.isDirectory() && DAY_RE.test(e.name) && e.name !== exceptDate)
+      .map((e) => e.name)
+      .sort()
+      .reverse();
+    for (const d of dates) {
+      if (await exists(this.contentPath(d))) return `${d}/content.md`;
+    }
+    return null;
+  }
+}
+
+export function subtitleOf(contentMd) {
+  const m = /^부제\s*:\s*(.+)$/m.exec(contentMd);
+  return m ? m[1].trim() : null;
+}
+
+function naturalCompare(a, b) {
+  return a.localeCompare(b, undefined, { numeric: true });
+}

@@ -6,7 +6,7 @@
 지켜야 할 규칙이 아니라, 길을 잃었을 때 다시 펼쳐 볼 표지판입니다.
 
 - **웹사이트**: <https://taeseokyi.github.io/Signposts_of_Faith/>
-- **굿뉴스 게시판**: 「우리들의 묵상/체험」 <https://maria.catholic.or.kr/mi_pr/missa/bbs_list.asp?menu=4770>
+- 굿뉴스 게시판에는 2026-11-02부터 올리지 않습니다. GitHub 발행만 합니다.
 
 > 이 글들은 AI와 나눈 대화에서 나왔습니다. 정리와 결론은 묵상 노트에 적은 나의 말을 중심으로 하며,
 > Claude가 정리한 문장과 교회 문헌의 직접 인용은 구분해 표시합니다.
@@ -29,6 +29,8 @@
 ├── requirements.txt
 ├── .github/workflows/
 │   └── pages.yml            웹사이트 자동 배포
+├── server/                  노트북 도우미 백엔드 (대화·사진 → claude CLI → content.md 초안 → 발행)
+├── app/                     도우미 화면 (서버가 폰·브라우저에 냅니다)
 ├── template/                빌드 코드
 │   ├── build.py               실행 파일
 │   ├── content.py             content.md 읽기와 검사
@@ -44,7 +46,14 @@
 
 빌드 결과(`board.html`, PDF, `_site/`)와 묵상 노트 사진은 저장소에 넣지 않습니다.
 
-## 쓰는 법
+## 노트북 도우미로 하기
+
+집 노트북에서 `node server/launch.mjs`로 서버를 띄우고, 같은 Wi-Fi의 폰이나 브라우저에서
+`https://<노트북IP>:8788/`을 엽니다. 대화를 붙여 넣고 노트 사진을 올리면 노트북의 `claude` CLI가
+`content.md` 초안을 쓰고, 화면에서 다듬어 **발행**을 누르면 커밋과 push까지 됩니다.
+설치와 설정은 [server/README.md](server/README.md)에 있습니다.
+
+## 직접 하기
 
 필요한 것: Python 3, `pip install -r requirements.txt`, Edge 또는 Chrome.
 

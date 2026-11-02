@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>신앙의 이정표 · 도우미</title>
+  <meta name="description" content="Claude 와 나눈 대화와 묵상 노트 사진으로 「신앙의 이정표」 content.md 를 만들고 GitHub 에 발행합니다.">
+  <meta name="theme-color" content="#5a6b3a">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+  <header class="top">
+    <button class="icon-btn" id="btn-back" title="날짜 목록" hidden>←</button>
+    <h1 id="title">신앙의 이정표 <small>도우미</small></h1>
+    <span class="conn" id="conn" title="노트북 연결 상태">·</span>
+    <button class="icon-btn" id="btn-settings" title="설정">⚙</button>
+  </header>
+
+  <main id="main">
+    <!-- 설정 -->
+    <section class="panel" id="view-settings" hidden>
+      <h2>설정</h2>
+      <label>접근 토큰
+        <input type="password" id="token" autocomplete="off" placeholder="노트북 .env.local 의 SIGNPOSTS_TOKEN">
+      </label>
+      <p class="hint">토큰은 이 브라우저에만 저장됩니다. 같은 Wi-Fi 안의 노트북 서버에만 보냅니다.</p>
+      <div class="row">
+        <button class="primary" id="btn-save-settings">저장하고 연결</button>
+        <button id="btn-cancel-settings">닫기</button>
+      </div>
+      <p class="hint" id="settings-msg"></p>
+    </section>
+
+    <!-- 날짜 목록 -->
+    <section id="view-days">
+      <div class="panel">
+        <h2>새 날짜</h2>
+        <div class="row">
+          <input type="date" id="new-date">
+          <button class="primary" id="btn-new-day">폴더 만들기</button>
+        </div>
+        <p class="hint">날짜는 독서 장절로 정합니다. 대화한 날이나 채팅 제목이 아니라 그 독서의 전례일입니다.</p>
+      </div>
+      <div class="panel">
+        <h2>묵상 목록 <button class="link" id="btn-refresh-days">새로 고침</button></h2>
+        <ul class="days" id="days"></ul>
+      </div>
+    </section>
+
+    <!-- 날짜 하나 -->
+    <section id="view-day" hidden>
+      <div class="panel step">
+        <h2><span class="num">1</span> 대화 원문 <span class="badge" id="b-conv"></span></h2>
+        <p class="hint">Claude 데스크톱에서 그날 대화를 전체 선택해 복사한 뒤 여기에 붙여 넣습니다. 저장소에는 올라가지 않습니다 (<code>대화.md</code>, git 제외).</p>
+        <textarea id="conversation" rows="8" placeholder="대화를 붙여 넣으세요. 없으면 비워 두세요 — 노트 사진만으로 물음을 다시 세웁니다."></textarea>
+        <div class="row">
+          <button class="primary" id="btn-save-conv">대화 저장</button>
+          <span class="hint" id="conv-msg"></span>
+        </div>
+      </div>
+
+      <div class="panel step">
+        <h2><span class="num">2</span> 묵상 노트 사진 <span class="badge" id="b-notes"></span></h2>
+        <p class="hint">원본은 <code>노트/</code>에 그대로 보관됩니다 (git 제외). 공개용은 그날 부분만 잘라 낸 사진으로, 가로 1400px 로 줄이고 촬영 정보는 지워 저장소에 올립니다. 공개용 사진은 폰 갤러리에서 미리 잘라 두세요 (촬영 시각 표시는 남기고, 개인적인 줄은 잘라 냅니다).</p>
+        <div class="row">
+          <label class="file-btn">원본 올리기 (노트/)<input type="file" id="file-note" accept="image/*" multiple></label>
+          <label class="file-btn">공개용 올리기 (note-날짜.jpg)<input type="file" id="file-public" accept="image/*" multiple></label>
+        </div>
+        <p class="hint" id="photo-msg"></p>
+        <div class="thumbs" id="thumbs"></div>
+      </div>
+
+      <div class="panel step">
+        <h2><span class="num">3</span> 초안 만들기 <span class="badge" id="b-draft"></span></h2>
+        <p class="hint">노트북의 claude 가 WORKFLOW.md, 대화, 노트 사진을 읽고 content.md 초안을 씁니다. 검사에서 [오류]가 나면 최대 세 번까지 스스로 고칩니다. 몇 분 걸립니다.</p>
+        <textarea id="instructions" rows="2" placeholder="덧붙일 지시 (선택). 예: 이정표는 두 개로. 노트의 빨간 글씨가 결론이다."></textarea>
+        <div class="row">
+          <button class="primary" id="btn-draft">초안 만들기</button>
+          <span class="hint" id="draft-msg"></span>
+        </div>
+        <div id="draft-result" hidden>
+          <h3>확인할 점</h3>
+          <ul class="review" id="review"></ul>
+          <h3>검사 결과</h3>
+          <ul class="problems" id="draft-problems"></ul>
+          <details>
+            <summary>초안 보기</summary>
+            <pre class="md" id="draft-text"></pre>
+          </details>
+          <details>
+            <summary>8장 기록 (발행할 때 WORKFLOW.md 에 붙습니다)</summary>
+            <pre class="md" id="record-text"></pre>
+          </details>
+          <div class="row">
+            <button class="primary" id="btn-apply">이 초안을 content.md 로</button>
+            <span class="hint">이미 content.md 가 있으면 사본을 남기고 덮어씁니다.</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel step">
+        <h2><span class="num">4</span> content.md 다듬기 <span class="badge" id="b-content"></span></h2>
+        <p class="hint">여기가 글의 원본입니다. 5단계 사실 확인(전례일, 장절, 교리서 항, 인용 출처)을 하고 고칩니다. 저장하면 바로 검사합니다.</p>
+        <textarea id="content" rows="18" spellcheck="false"></textarea>
+        <div class="row">
+          <button class="primary" id="btn-save-content">저장하고 검사</button>
+          <button id="btn-preview">미리보기 만들기</button>
+          <a id="preview-link" target="_blank" rel="noopener" hidden>미리보기 열기 ↗</a>
+        </div>
+        <ul class="problems" id="content-problems"></ul>
+        <p class="hint" id="content-msg"></p>
+      </div>
+
+      <div class="panel step">
+        <h2><span class="num">5</span> 발행 (GitHub)</h2>
+        <p class="hint">content.md 와 공개용 사진, 8장 기록을 커밋하고 push 합니다. push 되면 몇 분 뒤 웹사이트에 실립니다. 굿뉴스 게시판에는 올리지 않습니다.</p>
+        <pre class="git" id="git-status">git 상태를 보려면 아래를 누르세요.</pre>
+        <div class="row">
+          <button id="btn-git">git 상태</button>
+        </div>
+        <label>커밋 메시지
+          <input type="text" id="commit-msg" placeholder="비우면 'YYYY-MM-DD 묵상: 부제'">
+        </label>
+        <div class="row">
+          <button class="primary danger" id="btn-publish">발행 (commit + push)</button>
+          <span class="hint" id="publish-msg"></span>
+        </div>
+        <p id="publish-result" hidden></p>
+      </div>
+    </section>
+  </main>
+
+  <div class="toast" id="toast" hidden></div>
+  <script src="app.js"></script>
+</body>
+</html>

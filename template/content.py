@@ -135,8 +135,11 @@ def parse_verse(lines):
     return {'lines': text, 'ref': ref}
 
 
-def parse(path):
+def parse(path, folder=None):
+    """path 의 content.md 를 읽는다. folder 를 주면 노트사진 같은 곁 파일을 그 폴더에서 찾는다
+    (날짜 폴더 밖에 둔 초안을 그 날짜의 것으로 검사할 때)."""
     path = Path(path)
+    folder = Path(folder) if folder else path.parent
     text = path.read_text(encoding='utf-8-sig').replace('\r\n', '\n')
     meta, body = parse_front_matter(text)
     problems = []  # (수준, 내용): 수준은 '오류' 또는 '주의'
@@ -159,10 +162,10 @@ def parse(path):
     # 손글씨 노트 사진: 원저작임을 보여 주려고 공개 글에 함께 싣는다 (날짜 폴더 안의 파일, 쉼표로 여러 장)
     notes = []
     for name in [n.strip() for n in meta.get('노트사진', '').split(',') if n.strip()]:
-        if (path.parent / name).is_file():
-            notes.append({'file': name, 'path': path.parent / name})
+        if (folder / name).is_file():
+            notes.append({'file': name, 'path': folder / name})
         else:
-            problems.append(('오류', f'노트사진 파일이 없습니다: {path.parent.name}/{name}'))
+            problems.append(('오류', f'노트사진 파일이 없습니다: {folder.name}/{name}'))
 
     data = {
         'meta': meta,
