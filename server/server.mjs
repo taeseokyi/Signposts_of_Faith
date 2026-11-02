@@ -315,7 +315,19 @@ async function readJson(req) {
   }
 }
 
-async function serveStatic(res, root, rel, { cache = "no-cache" } = {}) {
+// 미리보기 HTML 맨 아래에 끼우는 줄: 도우미로 돌아가기, 같은 날짜의 공개 사이트 쪽.
+function previewBar(rel) {
+  const m = /^\/?(\d{4}-\d{2}-\d{2})(\/|$)/.exec(rel);
+  const live = m ? `${SITE_URL}${m[1]}/` : SITE_URL;
+  return (
+    '<div style="position:sticky;bottom:0;background:#5a6b3a;color:#fff;font:14px/1.6 sans-serif;padding:8px 16px;display:flex;gap:18px;flex-wrap:wrap">' +
+    '<span>미리보기 (아직 발행 전)</span>' +
+    `<a href="/${m ? "#" + m[1] : ""}" style="color:#fff">← 도우미로 돌아가기</a>` +
+    `<a href="${live}" target="_blank" rel="noopener" style="color:#fff">공개 사이트의 이 날 ↗</a></div>`
+  );
+}
+
+async function serveStatic(res, root, rel, { cache = "no-cache", inject = null } = {}) {
   const clean = normalize(decodeURIComponent(rel)).replace(/^([/\\])+/, "");
   let file = join(root, clean);
   if (!file.startsWith(root)) return false;
@@ -325,7 +337,10 @@ async function serveStatic(res, root, rel, { cache = "no-cache" } = {}) {
     info = await stat(file).catch(() => null);
   }
   if (!info?.isFile()) return false;
-  const body = await readFile(file);
+  let body = await readFile(file);
+  if (inject && extname(file).toLowerCase() === ".html") {
+    body = Buffer.from(body.toString("utf8").replace(/<\/body>/i, `${inject}</body>`), "utf8");
+  }
   res.writeHead(200, { "content-type": TYPES[extname(file).toLowerCase()] ?? "application/octet-stream", "cache-control": cache, ...CORS });
   res.end(body);
   return true;
@@ -394,7 +409,8 @@ const handler = async (req, res) => {
     }
 
     if (req.method === "GET" && path.startsWith("/preview")) {
-      if (await serveStatic(res, PREVIEW_DIR, path.slice("/preview".length) || "index.html", { cache: "no-store" })) return;
+      const rel = path.slice("/preview".length) || "index.html";
+      if (await serveStatic(res, PREVIEW_DIR, rel, { cache: "no-store", inject: previewBar(rel) })) return;
       send(res, 404, { error: "미리보기가 아직 없습니다. 먼저 '미리보기 만들기'를 누르세요." });
       return;
     }

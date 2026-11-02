@@ -20,6 +20,7 @@ DAY_RE = re.compile(r'^\d{4}-\d{2}-\d{2}$')
 MARKER = '.signposts-site'  # 이 표시가 있는 폴더만 지우고 다시 만든다
 
 SITE_TITLE = '신앙의 이정표'
+REPO_URL = 'https://github.com/taeseokyi/Signposts_of_Faith'
 SITE_SUB = '말씀을 따라 걸은 하루의 묵상'
 SITE_ABOUT = ('매일 미사의 독서와 복음을 붙들고 묻고 답한 것을 이정표로 정리합니다. '
               '이 글들은 AI와 나눈 대화에서 나왔으며, 정리와 결론은 묵상 노트에 적은 나의 말을 중심으로 합니다.')
@@ -115,7 +116,8 @@ def day_page(data, newer, older, pdf_href):
         '<div class="wrap">'
         f'<nav class="topnav"><a href="../">← {SITE_TITLE}</a></nav>'
         f'{hero}<main>{print_pdf.sections_html(data, lambda note: note["file"])}</main>{foot}'
-        f'<p class="site-foot">{html.escape(SITE_ABOUT)}</p>'
+        f'<p class="site-foot">{html.escape(SITE_ABOUT)} '
+        f'<a href="{REPO_URL}" rel="noopener">저장소</a></p>'
         '</div>'
     )
     paras = data['prologue']['paras']
@@ -143,7 +145,7 @@ def index_page(entries):
         f'<h1 class="site-title">{SITE_TITLE}</h1>'
         f'<p class="readings">{SITE_SUB}</p>'
         '</div></header>'
-        f'<p class="about">{html.escape(SITE_ABOUT)}</p>'
+        f'<p class="about">{html.escape(SITE_ABOUT)} <a href="{REPO_URL}" rel="noopener">저장소</a></p>'
         f'<ul class="entries">{"".join(items) or "<li class=entry>아직 공개된 묵상이 없습니다.</li>"}</ul>'
         '</div>'
     )

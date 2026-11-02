@@ -2,6 +2,7 @@
 // 토큰은 이 브라우저의 localStorage 에만 둡니다.
 
 const $ = (id) => document.getElementById(id);
+const SITE_URL = "https://taeseokyi.github.io/Signposts_of_Faith/";
 const state = { token: "", date: null, day: null, poll: null };
 
 // ---------- 저장 ----------
@@ -146,8 +147,12 @@ async function loadDays() {
     li.innerHTML =
       `<span class="date">${d.date}</span>` +
       tags.map(([t, c]) => `<span class="tag ${c}">${t}</span>`).join("") +
+      (d.hasContent ? `<a class="go" href="${SITE_URL}${d.date}/" target="_blank" rel="noopener" title="웹사이트에서 보기">사이트 ↗</a>` : "") +
       (d.subtitle ? `<span class="sub">${escapeHtml(d.subtitle)}</span>` : "");
-    li.addEventListener("click", () => openDay(d.date));
+    li.addEventListener("click", (e) => {
+      if (e.target.closest("a")) return; // 사이트 링크는 그대로 열리게
+      openDay(d.date);
+    });
     ul.appendChild(li);
   }
 }
@@ -257,6 +262,7 @@ function renderDay(day) {
 
   // 5. 발행
   $("commit-msg").placeholder = `${day.date} 묵상: ${day.subtitle ?? "부제"}`;
+  $("link-day").href = `${SITE_URL}${day.date}/`;
 }
 
 async function saveConversation() {
@@ -487,7 +493,11 @@ async function main() {
     return;
   }
   show("view-days");
-  if (await connect()) loadDays().catch((e) => toast(e.message));
+  if (await connect()) {
+    const back = /^#(\d{4}-\d{2}-\d{2})$/.exec(location.hash);
+    if (back) openDay(back[1]).catch((e) => toast(e.message));
+    else loadDays().catch((e) => toast(e.message));
+  }
 }
 
 if ("serviceWorker" in navigator && location.protocol === "https:") {
