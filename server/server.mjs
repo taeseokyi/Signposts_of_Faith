@@ -21,15 +21,15 @@
 
 import { createServer as createHttpServer } from "node:http";
 import { createServer as createHttpsServer } from "node:https";
-import { readFile, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, extname, join, normalize, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { timingSafeEqual } from "node:crypto";
 
 import { Days, DAY_RE, subtitleOf } from "./days.mjs";
 import { ClaudeRunner } from "./runner.mjs";
-import { buildDraftPrompt, RECORD_EXAMPLE_FALLBACK } from "./prompt.mjs";
-import { git, python } from "./exec.mjs";
+import { buildDraftPrompt, buildScrapPrompt, chatContext, chatSystemPrompt, RECORD_EXAMPLE_FALLBACK, SCRAP_SCHEMA } from "./prompt.mjs";
+import { cropPhoto, git, python } from "./exec.mjs";
 import { prepareTls } from "./tls.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -79,11 +79,12 @@ async function drain() {
   if (!date) return;
   working = true;
   try {
-    await makeDraft(date);
+    await runJob(date);
   } catch (error) {
-    console.error(`[${date}] 초안 실패:`, error.message);
+    console.error(`[${date}] 작업 실패:`, error.message);
     const job = (await days.job(date)) ?? {};
-    await days.saveJob(date, { ...job, status: "error", error: error.message, finishedAt: new Date().toISOString() }).catch(() => {});
+    const steps = (job.steps ?? []).map((st) => (st.status === "run" ? { ...st, status: "fail", detail: error.message } : st));
+    await days.saveJob(date, { ...job, steps, status: "error", error: error.message, finishedAt: new Date().toISOString() }).catch(() => {});
   } finally {
     working = false;
     drain();
@@ -114,53 +115,248 @@ async function checkFile(relPath, date) {
   }
 }
 
-async function makeDraft(date) {
+// ---------- 작업: 초안만, 또는 기초자료로 한 번에 발행 ----------
+//
+// job.mode  "draft"    초안만 만든다 (사람이 content.md 로 올리고 발행한다)
+//           "publish"  사진 정리 → 초안 → content.md → 발행까지 한 번에. 멈춰야 할 때는 status "hold" 로 두고 까닭을 적는다.
+// job.steps 단계마다 {key, label, status: wait|run|ok|skip|fail|hold, detail}
+
+const STEP_LABELS = {
+  photos: "노트 사진에서 이 날짜 부분 자르기",
+  draft: "초안 쓰기와 검사",
+  apply: "content.md 로 올리기",
+  publish: "발행 (commit + push)",
+};
+
+function newSteps(keys) {
+  return keys.map((key) => ({ key, label: STEP_LABELS[key], status: "wait", detail: "" }));
+}
+
+async function runJob(date) {
   let job = (await days.job(date)) ?? {};
+  const mode = job.mode === "publish" ? "publish" : "draft";
   job = await days.saveJob(date, {
     ...job,
+    mode,
     status: "running",
+    steps: newSteps(mode === "publish" ? ["photos", "draft", "apply", "publish"] : ["draft"]),
     attempts: 0,
     error: null,
+    hold: false,
+    holdReason: "",
     problems: [],
     review: [],
+    publish: null,
+    costUsd: null,
     startedAt: new Date().toISOString(),
     finishedAt: null,
   });
+  let cost = 0;
+  const step = async (key, status, detail = "") => {
+    job = await days.saveJob(date, { ...job, steps: job.steps.map((st) => (st.key === key ? { ...st, status, detail } : st)) });
+  };
+  const stop = async (key, reason) => {
+    await step(key, "hold", reason);
+    job = await days.saveJob(date, { ...job, status: "hold", hold: true, holdReason: reason, costUsd: cost || null, finishedAt: new Date().toISOString() });
+    console.log(`[${date}] 멈춤 · ${reason}`);
+  };
 
+  // 1. 사진: 공개용이 아직 없고 원본이 있으면, 그 날짜 부분을 찾아 서버에서 자른다.
+  if (mode === "publish") {
+    await step("photos", "run");
+    const notes = await days.notePhotos(date);
+    const pub = await days.publicPhotos(date);
+    if (pub.length) {
+      await step("photos", "skip", `공개용 사진이 이미 있습니다: ${pub.join(", ")}`);
+    } else if (!notes.length) {
+      await step("photos", "skip", "노트 사진이 없습니다. 사진 없이 갑니다.");
+    } else {
+      // 같은 사진들을 이미 봤으면 (2단계에서 '이 날짜 부분 찾기'를 눌렀거나 앞서 멈춘 뒤) 다시 보지 않습니다.
+      const prev = await days.scrap(date);
+      const same = prev && prev.photos.length === notes.length && notes.every((n) => prev.photos.some((p) => p.file === n));
+      const scrap = same ? prev : await scrapPhotos(date, null);
+      if (!same) cost += scrap.costUsd || 0;
+      const hits = scrap.photos.filter((p) => p.has_day);
+      if (!hits.length) {
+        await stop("photos", `노트 사진 ${notes.length}장에서 ${date} 의 부분을 찾지 못했습니다. 날짜가 맞는지 확인하세요. (${scrap.summary})`);
+        return;
+      }
+      const risky = hits.find((p) => p.private);
+      if (risky) {
+        await stop("photos", `${risky.file} 의 그날 부분에 공개하면 안 될 줄이 보입니다: ${risky.private} — 2단계 자르기 편집기에서 직접 잘라 올린 뒤 다시 발행하세요.`);
+        return;
+      }
+      const made = [];
+      for (const p of hits) {
+        const tmp = join(days.stateDir(date), `crop-${p.file}.jpg`);
+        await mkdir(days.stateDir(date), { recursive: true });
+        await cropPhoto(`${date}/노트/${p.file}`, `server/data/${date}/crop-${p.file}.jpg`, p.crop ?? {}, { cwd: REPO });
+        const name = await days.addPhoto(date, { kind: "public", mediaType: "image/jpeg", buffer: await readFile(tmp) });
+        await rm(tmp, { force: true });
+        made.push(`${p.file} → ${name}`);
+      }
+      await step("photos", "ok", made.join(", "));
+    }
+  }
+
+  // 2. 초안 (검사에서 [오류]면 최대 MAX_ATTEMPTS 번)
+  await step("draft", "run");
   const notes = await days.notePhotos(date);
   const base = {
     date,
-    conversationPath: job.hasConversation ? `${date}/대화.md` : null,
+    conversationPath: (await days.summary(date)).hasConversation ? `${date}/대화.md` : null,
     photoPaths: notes.map((n) => `${date}/노트/${n}`),
     publicPhotos: await days.publicPhotos(date),
     examplePath: await days.examplePath(date),
     instructions: job.instructions ?? "",
     recordExample: await recordExample(),
   };
-
   let retry = null;
-  let costTotal = 0;
   let check = null;
+  let draft = null;
+  let errors = [];
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     job = await days.saveJob(date, { ...job, attempts: attempt });
-    const prompt = buildDraftPrompt({ ...base, retry });
-    const { draft, costUsd } = await runner.run(prompt, { logPath: days.logPath(date, attempt) });
-    if (costUsd) costTotal += costUsd;
+    await step("draft", "run", attempt > 1 ? `${attempt}차 (앞 초안의 오류 ${errors.length}개를 고치는 중)` : "");
+    const r = await runner.run(buildDraftPrompt({ ...base, retry }), { logPath: days.logPath(date, attempt) });
+    draft = r.draft;
+    cost += r.costUsd || 0;
     await days.saveDraft(date, draft);
     check = await checkDraft(date);
-    job = await days.saveJob(date, { ...job, review: draft.review, problems: check.problems, title: check.title });
-    const errors = check.problems.filter(([level]) => level === "오류").map(([, m]) => m);
-    console.log(`[${date}] 초안 ${attempt}차 · 이정표 ${check.milestones}개 · 오류 ${errors.length} · 주의 ${check.problems.length - errors.length}`);
+    job = await days.saveJob(date, { ...job, review: draft.review, problems: check.problems, title: check.title, hold: draft.hold, holdReason: draft.holdReason });
+    errors = check.problems.filter(([level]) => level === "오류").map(([, m]) => m);
+    console.log(`[${date}] 초안 ${attempt}차 · 이정표 ${check.milestones}개 · 오류 ${errors.length} · 주의 ${check.problems.length - errors.length}${draft.hold ? " · 사람 확인 필요" : ""}`);
     if (!errors.length) break;
     retry = { problems: errors, draft: draft.content_md };
   }
+  if (errors.length) {
+    await step("draft", "fail", `${MAX_ATTEMPTS}번 시도해도 [오류]가 남았습니다: ${errors[0]}`);
+    job = await days.saveJob(date, { ...job, status: "error", error: `초안에 [오류]가 남았습니다 (${errors.length}개). 4단계에서 직접 고치세요.`, costUsd: cost || null, finishedAt: new Date().toISOString() });
+    return;
+  }
+  await step("draft", "ok", `${check.title ?? ""} · 이정표 ${check.milestones}개 · 주의 ${check.problems.length}개${draft.review.length ? ` · 확인할 점 ${draft.review.length}개` : ""}`);
 
-  await days.saveJob(date, {
-    ...job,
-    status: "done",
-    costUsd: costTotal || null,
-    finishedAt: new Date().toISOString(),
-  });
+  if (mode === "draft") {
+    job = await days.saveJob(date, { ...job, status: "done", costUsd: cost || null, finishedAt: new Date().toISOString() });
+    return;
+  }
+
+  // 3. content.md 로
+  await step("apply", "run");
+  await days.applyDraft(date);
+  const final = await checkFile(`${date}/content.md`, date);
+  if (!final.ok) {
+    await step("apply", "fail", final.problems.filter(([l]) => l === "오류").map(([, m]) => m).join(" / "));
+    job = await days.saveJob(date, { ...job, status: "error", error: "content.md 검사에서 [오류]가 났습니다.", problems: final.problems, costUsd: cost || null, finishedAt: new Date().toISOString() });
+    return;
+  }
+  await step("apply", "ok", "content.md 를 썼습니다 (있던 것은 사본으로 남김)");
+
+  // 4. 발행 — claude 가 hold 를 올렸거나, 발행 전에 멈추라고 했으면 여기서 선다.
+  if (draft.hold) {
+    await stop("publish", `claude 가 사람 확인을 청했습니다: ${draft.holdReason || "(까닭 없음)"} — 4단계에서 보고 5단계에서 발행하세요.`);
+    return;
+  }
+  if (job.stopBeforePublish) {
+    await stop("publish", "'발행 전에 멈추기'를 골랐습니다. content.md 를 보고 5단계에서 발행하세요.");
+    return;
+  }
+  await step("publish", "run");
+  let result;
+  try {
+    result = await publish(date, {});
+  } catch (error) {
+    await step("publish", "fail", error.message);
+    job = await days.saveJob(date, { ...job, status: "error", error: error.message, costUsd: cost || null, finishedAt: new Date().toISOString() });
+    return;
+  }
+  await step("publish", result.pushed ? "ok" : "fail", result.pushed ? `커밋 ${result.commit} · push 완료 → ${result.url}` : `커밋 ${result.commit} 은 됐지만 push 가 안 됐습니다: ${result.pushError}`);
+  job = await days.saveJob(date, { ...job, status: "done", publish: result, costUsd: cost || null, finishedAt: new Date().toISOString() });
+  console.log(`[${date}] 한 번에 발행 끝 · ${result.commit}${result.pushed ? " · push 완료" : " · push 안 됨"} · 약 $${cost.toFixed(2)}`);
+}
+
+// ---------- 화면 안 대화 ----------
+
+const chatting = new Set(); // 날짜마다 한 번에 한 턴만
+
+/**
+ * 한 턴을 돌리며 NDJSON 으로 흘려 보냅니다.
+ *   {"delta":"…"}  글자가 나오는 대로
+ *   {"status":"…"} 도구를 쓰는 중 같은 상태
+ *   {"done":true, "text":"…", "costUsd":…, "chatTurns":n}
+ *   {"error":"…"}
+ */
+async function chatTurn(date, text, res) {
+  if (chatting.has(date)) {
+    send(res, 409, { error: "앞 대화에 아직 답하는 중입니다." });
+    return;
+  }
+  chatting.add(date);
+  res.writeHead(200, { "content-type": "application/x-ndjson; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff", ...CORS });
+  const emit = (obj) => res.write(JSON.stringify(obj) + "\n");
+  const chat = await days.chat(date);
+  const at = new Date().toISOString();
+  try {
+    const notes = await days.notePhotos(date);
+    const context = chatContext({ date, photoPaths: notes.map((n) => `${date}/노트/${n}`), publicPhotos: await days.publicPhotos(date) });
+    // 사진 목록은 턴마다 바뀔 수 있으므로 사용자 말 앞에 붙여 보냅니다. 저장되는 대화에는 들어가지 않습니다.
+    const prompt = `${context}\n\n${text}`;
+    const r = await runner.stream(prompt, {
+      systemPrompt: chat.sessionId ? undefined : chatSystemPrompt({ date }),
+      resume: chat.sessionId,
+      onDelta: (d) => emit({ delta: d }),
+      onStatus: (s) => emit({ status: s }),
+    });
+    chat.messages.push({ role: "user", text, at }, { role: "assistant", text: r.text, at: new Date().toISOString() });
+    chat.sessionId = r.sessionId ?? chat.sessionId;
+    chat.costUsd = (chat.costUsd || 0) + (r.costUsd || 0);
+    await days.saveChat(date, chat);
+    emit({ done: true, text: r.text, costUsd: r.costUsd, chatTurns: chat.messages.filter((m) => m.role === "user").length });
+  } catch (error) {
+    console.error(`[${date}] 대화 실패:`, error.message);
+    emit({ error: error.message });
+  } finally {
+    chatting.delete(date);
+    res.end();
+  }
+}
+
+// ---------- 노트 사진에서 그 날짜 부분 찾기 ----------
+
+const scrapping = new Set();
+
+async function scrapPhotos(date, names) {
+  if (scrapping.has(date)) throw Object.assign(new Error("이미 사진을 보는 중입니다."), { status: 409 });
+  scrapping.add(date);
+  try {
+    const notes = await days.notePhotos(date);
+    const wanted = names?.length ? notes.filter((n) => names.includes(n)) : notes;
+    if (!wanted.length) throw Object.assign(new Error("볼 노트 사진 원본이 없습니다. 먼저 원본을 올리세요."), { status: 400 });
+    // 대화 첫 마디에 전례일과 장절이 있으면 판단에 보탬이 됩니다.
+    const chat = await days.chat(date);
+    const first = chat.messages.find((m) => m.role === "user")?.text ?? "";
+    const hint = first.replace(/\s+/g, " ").slice(0, 400);
+    const prompt = buildScrapPrompt({ date, photoPaths: wanted.map((n) => `${date}/노트/${n}`), hint });
+    const { output, costUsd } = await runner.runJson(prompt, { schema: SCRAP_SCHEMA, maxTurns: 20, logPath: join(days.stateDir(date), "scrap.log") });
+    const photos = (Array.isArray(output.photos) ? output.photos : [])
+      .map((p) => ({ ...p, file: String(p.file ?? "").split("/").pop() }))
+      .filter((p) => wanted.includes(p.file))
+      .map((p) => ({ ...p, crop: p.has_day && p.crop ? clampCrop(p.crop) : null }));
+    const prev = (await days.scrap(date))?.photos ?? [];
+    // 이번에 보지 않은 사진의 지난 결과는 남겨 둡니다.
+    const merged = [...prev.filter((p) => !wanted.includes(p.file) && notes.includes(p.file)), ...photos];
+    return days.saveScrap(date, { at: new Date().toISOString(), summary: String(output.summary ?? ""), costUsd, photos: merged });
+  } finally {
+    scrapping.delete(date);
+  }
+}
+
+function clampCrop(c) {
+  const f = (v, d) => (Number.isFinite(Number(v)) ? Math.min(1, Math.max(0, Number(v))) : d);
+  const crop = { top: f(c.top, 0), bottom: f(c.bottom, 1), left: f(c.left, 0), right: f(c.right, 1) };
+  if (crop.bottom - crop.top < 0.05) [crop.top, crop.bottom] = [0, 1];
+  if (crop.right - crop.left < 0.05) [crop.left, crop.right] = [0, 1];
+  return crop;
 }
 
 // ---------- 미리보기 (웹사이트 빌드) ----------
@@ -197,6 +393,19 @@ async function publish(date, { message, push = true, withRecord = true } = {}) {
     err.problems = check.problems;
     throw err;
   }
+  // 원격이 앞서 있으면 (예: GitHub 에서 직접 고친 것) 먼저 빨리 감기로 받아 둡니다. 안 되면 그대로 가고, push 가 알려 줍니다.
+  let pulled = null;
+  let pullError = null;
+  try {
+    await git(["fetch", "--quiet"], { cwd: REPO, timeoutMs: 60 * 1000 });
+    const st = await gitStatus();
+    if (st.behind) {
+      await git(["pull", "--ff-only", "--quiet"], { cwd: REPO });
+      pulled = st.behind;
+    }
+  } catch (e) {
+    pullError = e.message;
+  }
   const subtitle = subtitleOf(await readFile(days.contentPath(date), "utf8")) ?? "";
   const files = [`${date}/content.md`, ...(await days.publicPhotos(date)).map((n) => `${date}/${n}`)];
   if (withRecord && (await appendRecord(date))) files.push("WORKFLOW.md");
@@ -221,7 +430,7 @@ async function publish(date, { message, push = true, withRecord = true } = {}) {
       pushError = e.message;
     }
   }
-  return { commit: head, files: staged.split("\n"), pushed, pushError, url: `${SITE_URL}${date}/` };
+  return { commit: head, files: staged.split("\n"), pushed, pushError, pulled, pullError, url: `${SITE_URL}${date}/` };
 }
 
 async function gitStatus() {
@@ -464,6 +673,45 @@ const handler = async (req, res) => {
       return;
     }
 
+    if (part === "chat" && req.method === "GET") {
+      send(res, 200, { chat: await days.chat(date) });
+      return;
+    }
+
+    if (part === "chat" && req.method === "POST") {
+      const body = await readJson(req);
+      const text = String(body.text ?? "").replace(/\r\n/g, "\n").trim();
+      if (!text) {
+        send(res, 400, { error: "보낼 말이 비어 있습니다." });
+        return;
+      }
+      if (!(await days.exists(date))) await days.create(date);
+      await chatTurn(date, text, res);
+      return;
+    }
+
+    if (part === "chat" && req.method === "DELETE") {
+      if (chatting.has(date)) {
+        send(res, 409, { error: "답하는 중에는 지울 수 없습니다." });
+        return;
+      }
+      await days.clearChat(date);
+      send(res, 200, { ok: true });
+      return;
+    }
+
+    if (part === "scrap" && req.method === "POST") {
+      const body = await readJson(req);
+      try {
+        const scrap = await scrapPhotos(date, Array.isArray(body.photos) ? body.photos.map(String) : null);
+        console.log(`[${date}] 사진 ${scrap.photos.length}장 판독 · 이 날짜 ${scrap.photos.filter((p) => p.has_day).length}장`);
+        send(res, 200, { scrap });
+      } catch (error) {
+        send(res, error.status ?? 500, { error: error.message });
+      }
+      return;
+    }
+
     if (part === "photos" && req.method === "POST") {
       if (Number(req.headers["content-length"]) > MAX_UPLOAD) {
         send(res, 413, { error: `업로드 용량이 너무 큽니다 (${MAX_UPLOAD_MB}MB 초과). 사진을 나눠서 보내 주세요.` });
@@ -506,22 +754,31 @@ const handler = async (req, res) => {
       return;
     }
 
-    if (part === "draft" && !rest && req.method === "POST") {
+    if (((part === "draft" && !rest) || part === "run") && req.method === "POST") {
+      // draft: 초안만. run: 기초자료(대화·사진)로 사진 정리 → 초안 → content.md → 발행까지 한 번에.
+      const mode = part === "run" ? "publish" : "draft";
       const body = await readJson(req);
       const current = await days.job(date);
       if (current && (current.status === "queued" || current.status === "running")) {
-        send(res, 409, { error: "이미 초안을 만드는 중입니다." });
+        send(res, 409, { error: "이미 작업 중입니다." });
+        return;
+      }
+      if (chatting.has(date)) {
+        send(res, 409, { error: "대화에 답하는 중입니다. 끝난 뒤 시작하세요." });
         return;
       }
       const summary = await days.summary(date);
       if (!summary.hasConversation && !summary.noteCount) {
-        send(res, 400, { error: "대화 원문이나 노트 사진 가운데 하나는 있어야 초안을 만들 수 있습니다." });
+        send(res, 400, { error: "대화나 노트 사진 가운데 하나는 있어야 합니다." });
         return;
       }
       await days.saveJob(date, {
         status: "queued",
+        mode,
+        stopBeforePublish: Boolean(body.stopBeforePublish),
         instructions: String(body.instructions ?? ""),
         hasConversation: summary.hasConversation,
+        steps: newSteps(mode === "publish" ? ["photos", "draft", "apply", "publish"] : ["draft"]),
         attempts: 0,
         problems: [],
         review: [],
@@ -529,7 +786,7 @@ const handler = async (req, res) => {
         createdAt: new Date().toISOString(),
       });
       enqueue(date);
-      send(res, 202, { ok: true, queued: queue.length + (working ? 1 : 0) });
+      send(res, 202, { ok: true, mode, queued: queue.length + (working ? 1 : 0) });
       return;
     }
 

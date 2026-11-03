@@ -6,7 +6,7 @@
 export const DRAFT_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["content_md", "record_md", "review"],
+  required: ["content_md", "record_md", "review", "hold", "hold_reason"],
   properties: {
     content_md: {
       type: "string",
@@ -21,6 +21,11 @@ export const DRAFT_SCHEMA = {
       items: { type: "string" },
       description: "사람이 확인해야 할 점. 전례일, 장절, 교리서 항 번호, 인용 출처, 노트 판독이 불확실한 곳, 개인 정보 여부 등.",
     },
+    hold: {
+      type: "boolean",
+      description: "true 면 자동 발행을 멈추고 사람이 먼저 봐야 한다: 대화·노트의 독서가 이 날짜의 전례와 맞지 않아 보일 때, 개인 정보(실명, 본당, 가족 사정)가 글에 남았을 수 있을 때, 노트를 거의 읽지 못했을 때.",
+    },
+    hold_reason: { type: "string", description: "hold 가 true 인 까닭 한 줄. false 면 빈 문자열." },
   },
 };
 
@@ -64,7 +69,7 @@ ${examplePath ? `3. ${examplePath} — 실제로 완성된 content.md 본보기.
 ## 이날의 자료
 
 ${conversationPath
-    ? `- 대화 원문: ${conversationPath} — 사용자가 claude 와 나눈 대화를 붙여 넣은 것. 사용자의 물음이 곧 이정표의 물음이다.`
+    ? `- 대화 원문: ${conversationPath} — 사용자가 claude 와 나눈 대화 (화면에서 주고받은 것, 또는 붙여 넣은 것). "## 나" 가 사용자, "## Claude" 가 답이다. 사용자의 물음이 곧 이정표의 물음이다.`
     : `- 대화 원문: 없다. 3장 "대화가 남아 있지 않은 날"의 규칙을 따른다. 독서마다 이정표 하나를 두고, 물음은 노트 내용에서 다시 세운다. 여는 말씀의 고지문과 근거의 "참고"에 "그날의 대화가 남아 있지 않아 물음은 노트에서 다시 세웠다"고 밝힌다.`}
 - 묵상 노트 사진 (Read 로 하나씩 열어 손글씨를 읽는다):
 ${list(photoPaths)}
@@ -97,9 +102,13 @@ WORKFLOW.md 8장 "기록"에 그대로 붙일 블록이다. 다음 본보기의 
 
 ${recordExample}
 
-## review
+## review 와 hold
 
-사람이 확인해야 할 점을 한 줄씩. 전례일 이름과 주간, 독서·복음 장절, 교리서 항 번호, 인용 출처와 문구, 노트에서 읽기 어려웠던 글자, 개인 정보로 보이는 대목. 확인할 것이 없으면 빈 배열.`);
+review: 사람이 확인해야 할 점을 한 줄씩. 전례일 이름과 주간, 독서·복음 장절, 교리서 항 번호, 인용 출처와 문구, 노트에서 읽기 어려웠던 글자, 개인 정보로 보이는 대목. 확인할 것이 없으면 빈 배열.
+hold: 이 글을 사람이 보지 않고 바로 발행해도 되는지. 보통은 false. 다음 가운데 하나면 true 로 하고 hold_reason 에 까닭을 적는다.
+  - 대화나 노트의 독서·복음이 ${date} 의 전례와 맞지 않아 보인다 (날짜가 틀렸을 가능성)
+  - 실명, 본당 이름, 가족 사정 같은 개인 정보가 글에 남았을 수 있다
+  - 노트 사진을 거의 읽지 못해 결론을 짐작으로 썼다`);
 
   if (instructions && instructions.trim()) {
     parts.push(`## 사용자의 덧붙인 지시
@@ -140,3 +149,110 @@ export const RECORD_EXAMPLE_FALLBACK = `### 2026-10-23 · 연중 제29주간 금
   1. 일치는 만들어야 할 것이 아니라 지켜야 할 선물이다.
   2. 위선은 모르는 것이 아니라 알면서 외면하는 것이다.
   3. 아직 길 위에 있는 지금, 알면서도 미뤄 온 한 가지를 한다.`;
+
+// ---------- 대화 (화면 안에서 claude 와 주고받기) ----------
+
+/**
+ * 대화 세션의 시스템 프롬프트. 기본 코딩 에이전트 프롬프트를 쓰지 않고 이것으로 바꿉니다(--system-prompt).
+ * 세션을 --resume 할 때는 CLI 가 처음 기록한 프롬프트를 그대로 다시 쓰므로, 사진 목록은 대화 본문에서 알려 줍니다.
+ */
+export function chatSystemPrompt({ date }) {
+  return `너는 「신앙의 이정표」 묵상 대화의 상대다. 사용자는 가톨릭 신자이고, 그날의 독서와 복음으로 묵상하며
+삶의 물음을 너에게 묻는다. 이 대화는 그대로 저장되어(대화.md) 글 「신앙의 이정표」의 바탕이 된다.
+사용자의 물음 하나가 이정표 하나가 되므로, 물음 하나에 답 하나를 또렷하게 한다. 오늘 묵상하는 날짜는 ${date} 다.
+
+## 대화 원칙 (WORKFLOW.md 2장)
+
+- 근거(성경 장절, 가톨릭 교회 교리서 항, 교회 문헌, 교부·성인)는 항상 답 마지막에 "근거" 소제목 아래 모아서 정리한다.
+- 교과서적 설명보다 사용자의 실제 삶의 물음에 답한다.
+- 해석이 규율과 족쇄로 늘어나지 않게 한다. 남는 것이 하나면 충분하다.
+- 교회 가르침에는 정확하게. 단정하기 어려운 표현은 교회 문헌의 표현에 맞춘다. (예: 지옥은 "장소라기보다 상태")
+- 네가 정리한 문장과 교회 문헌의 직접 인용을 구분해 표시한다. 교리서 항 번호나 인용 문구가 확실하지 않으면 "(확인 필요)"라고 붙인다.
+- 너는 경험이 없다. 설명은 지도이고, 길을 걷고 식탁에 앉는 것은 사용자의 몫이다. 가르치거나 판단하는 어조를 쓰지 않는다.
+- 사용자가 노트에 적은 자기 결론이 글의 중심이 된다. 네 설명은 그것을 뒷받침하는 자리에 있다.
+
+## 답하는 방식
+
+- 한국어로, 너무 길지 않게. 짧은 소제목·목록·인용 정도의 가벼운 마크다운만 쓴다. 표와 코드는 쓰지 않는다.
+- 전례일·독서·복음을 사용자가 아직 알려 주지 않았으면, 먼저 그것을 묻는다 (장절만 있어도 된다).
+- 사용자가 "정리해 줘", "한 줄로" 하고 청하면 물음마다 "기억할 한 문장"을 제안한다. 글 전체(content.md)는 이 대화에서 만들지 않는다. 그것은 다음 단계가 한다.
+- 사용자가 묵상 노트 사진을 보라고 하면 Read 도구로 그 파일을 연다 (경로는 대화에서 알려 준다). 그 밖의 저장소 파일은 사용자가 청할 때만 읽는다.`;
+}
+
+/** 대화 첫 마디에 덧붙이는 안내 (사진 경로 등). 사용자에게는 보이지 않습니다. */
+export function chatContext({ date, photoPaths, publicPhotos }) {
+  const lines = [`[도우미 안내 — 사용자에게 보이지 않는 줄] 날짜 ${date}.`];
+  if (photoPaths.length) lines.push(`사용자가 올린 묵상 노트 사진 원본: ${photoPaths.join(", ")} (Read 도구로 볼 수 있다).`);
+  if (publicPhotos.length) lines.push(`공개용으로 잘라 둔 사진: ${publicPhotos.join(", ")}.`);
+  return lines.join(" ");
+}
+
+// ---------- 노트 사진에서 그 날짜 부분 찾기 ----------
+
+export const SCRAP_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["photos", "summary"],
+  properties: {
+    photos: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["file", "has_day", "evidence", "other_days", "crop", "private"],
+        properties: {
+          file: { type: "string", description: "사진 파일 이름 (경로 말고 이름만)" },
+          has_day: { type: "boolean", description: "이 날짜의 노트가 이 사진에 있는가" },
+          evidence: { type: "string", description: "무엇을 보고 판단했는가: 날짜 표시, 독서·복음 장절, 전례일 이름" },
+          other_days: { type: "array", items: { type: "string" }, description: "같은 사진에 보이는 다른 날짜 표시" },
+          crop: {
+            type: ["object", "null"],
+            additionalProperties: false,
+            required: ["top", "bottom", "left", "right"],
+            properties: {
+              top: { type: "number" },
+              bottom: { type: "number" },
+              left: { type: "number" },
+              right: { type: "number" },
+            },
+            description: "그 날짜 부분만 남기는 사각형. 사진 전체 높이·너비를 1 로 본 비율 (0~1). has_day 가 아니면 null",
+          },
+          private: { type: "string", description: "crop 안에 공개하면 안 될 줄이 보이면 어디인지: 실명, 본당·단체 이름, 가족이나 다른 사람의 사정, 연락처·주소, 건강·돈 문제. 신앙적 결심이나 기도문은 공개해도 되는 글이므로 적지 않는다. 없으면 빈 문자열" },
+        },
+      },
+    },
+    summary: { type: "string", description: "한두 줄 요약: 어느 사진의 어느 부분이 이 날짜인지" },
+  },
+};
+
+/**
+ * @param {object} o
+ * @param {string} o.date
+ * @param {string[]} o.photoPaths   저장소 기준 상대 경로
+ * @param {string} o.hint           대화에서 알게 된 전례일·장절 (없으면 빈 문자열)
+ */
+export function buildScrapPrompt({ date, photoPaths, hint }) {
+  return `${date} 의 묵상 노트 사진에서 이 날짜의 부분을 찾는다. 사진에는 여러 날이 섞여 있을 수 있다
+(한 쪽에 두세 날, 또는 펼친 두 쪽). 사진을 Read 도구로 하나씩 연다.
+
+사진:
+${photoPaths.map((p) => `  - ${p}`).join("\n")}
+${hint ? `\n이 날짜에 대해 대화에서 알게 된 것: ${hint}\n` : ""}
+판단 기준: 노트에 적힌 날짜 표시 (예: 11/3, 11.3, 11월 3일, 요일), 독서·복음 장절, 전례일 이름.
+${date} 는 ${monthDay(date)} 이다. 날짜 표시가 없으면 장절로 추정하고 evidence 에 그렇게 적는다.
+
+각 사진마다 has_day, evidence, other_days, crop, private 를 낸다.
+- crop 은 그 날짜의 글이 모두 들어가고 다른 날의 줄은 들어가지 않는 가장 작은 사각형에 위아래로 2~3% 여유를 둔 것이다.
+  top/bottom 은 위에서부터의 높이 비율, left/right 는 왼쪽부터의 너비 비율이다 (0 ≤ top < bottom ≤ 1, 0 ≤ left < right ≤ 1).
+  그날 부분이 사진 전체면 {top:0, bottom:1, left:0, right:1}. 날짜 표시 줄은 crop 안에 넣는다.
+  사진 안의 촬영 시각 표시(카메라 앱이 찍은 글자)는 있으면 남겨도 된다.
+- private 는 실명, 본당·단체 이름, 가족이나 다른 사람의 사정, 연락처·주소, 건강·돈 문제처럼 공개 사이트에 실리면 안 될 줄만 적는다.
+  신앙적 결심("…하겠습니다"), 기도문, 자기 반성은 이 노트의 본래 내용이라 공개해도 된다. 적지 않는다.
+- 손글씨를 다 읽을 필요는 없다. 날짜와 장절, 경계를 찾는 것이 일이다.
+- 지정된 JSON 스키마대로만 답한다. file 은 파일 이름만 적는다 (예: photo-2.jpg).`;
+}
+
+function monthDay(date) {
+  const [, m, d] = date.split("-").map(Number);
+  return `${m}월 ${d}일`;
+}

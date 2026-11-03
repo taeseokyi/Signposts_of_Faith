@@ -6,6 +6,8 @@
 //     note-2026-10-24.jpg   공개용 노트 사진 (커밋됨)
 //     content.md            그날의 글 (커밋됨)
 //   <저장소>/server/data/2026-10-24/
+//     chat.json             화면에서 claude 와 주고받은 대화 (세션 ID, 메시지). 대화.md 는 여기서 만든다
+//     scrap.json            노트 사진에서 그 날짜 부분을 찾은 결과 (자를 영역 제안)
 //     job.json              초안 작업 상태
 //     draft.md              claude 가 낸 초안
 //     record.md             WORKFLOW.md 8장에 붙일 기록
@@ -64,6 +66,14 @@ export class Days {
     return join(this.stateDir(date), "record.md");
   }
 
+  chatPath(date) {
+    return join(this.stateDir(date), "chat.json");
+  }
+
+  scrapPath(date) {
+    return join(this.stateDir(date), "scrap.json");
+  }
+
   async list() {
     const entries = await readdir(this.repo, { withFileTypes: true }).catch(() => []);
     const dates = entries.filter((e) => e.isDirectory() && DAY_RE.test(e.name)).map((e) => e.name);
@@ -85,15 +95,17 @@ export class Days {
   async summary(date) {
     const job = await this.job(date);
     const content = await readText(this.contentPath(date));
+    const chat = await this.chat(date);
     return {
       date,
       hasConversation: await exists(this.conversationPath(date)),
+      chatTurns: chat.messages.filter((m) => m.role === "user").length,
       noteCount: (await this.notePhotos(date)).length,
       publicPhotos: await this.publicPhotos(date),
       hasContent: content != null,
       subtitle: content ? subtitleOf(content) : null,
       hasDraft: await exists(this.draftPath(date)),
-      job: job && { status: job.status, attempts: job.attempts, error: job.error, finishedAt: job.finishedAt },
+      job: job && { status: job.status, mode: job.mode, attempts: job.attempts, error: job.error, hold: job.hold, finishedAt: job.finishedAt },
     };
   }
 
@@ -102,6 +114,8 @@ export class Days {
     return {
       ...base,
       conversation: (await readText(this.conversationPath(date))) ?? "",
+      chat: await this.chat(date),
+      scrap: await this.scrap(date),
       content: (await readText(this.contentPath(date))) ?? "",
       notes: await this.notePhotos(date),
       draft: (await readText(this.draftPath(date))) ?? "",
@@ -121,6 +135,49 @@ export class Days {
     }
     await writeFile(this.conversationPath(date), clean + "\n", "utf8");
     return true;
+  }
+
+  // ---------- 화면 안 대화 ----------
+
+  /** @returns {Promise<{sessionId: string|null, messages: {role: "user"|"assistant", text: string, at: string}[], costUsd: number}>} */
+  async chat(date) {
+    const raw = await readText(this.chatPath(date));
+    try {
+      const c = raw ? JSON.parse(raw) : null;
+      return { sessionId: c?.sessionId ?? null, messages: Array.isArray(c?.messages) ? c.messages : [], costUsd: Number(c?.costUsd) || 0 };
+    } catch {
+      return { sessionId: null, messages: [], costUsd: 0 };
+    }
+  }
+
+  /** 대화를 저장하고, 같은 내용으로 대화.md 를 다시 씁니다 (초안 단계가 읽는 파일). */
+  async saveChat(date, chat) {
+    await mkdir(this.stateDir(date), { recursive: true });
+    await writeFile(this.chatPath(date), JSON.stringify(chat, null, 2), "utf8");
+    await this.writeConversation(date, conversationMarkdown(date, chat.messages));
+    return chat;
+  }
+
+  async clearChat(date) {
+    await rm(this.chatPath(date), { force: true });
+    await rm(this.conversationPath(date), { force: true });
+  }
+
+  // ---------- 노트 사진에서 그 날짜 부분 찾기 ----------
+
+  async scrap(date) {
+    const raw = await readText(this.scrapPath(date));
+    try {
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  async saveScrap(date, scrap) {
+    await mkdir(this.stateDir(date), { recursive: true });
+    await writeFile(this.scrapPath(date), JSON.stringify(scrap, null, 2), "utf8");
+    return scrap;
   }
 
   // ---------- 사진 ----------
@@ -158,6 +215,7 @@ export class Days {
         name = `note-${date}-${Math.max(0, ...nums) + 1}.${ext}`;
       }
       await writeFile(join(this.dir(date), name), buffer);
+      await this.syncPhotoLine(date);
       return name;
     }
     await mkdir(this.notesDir(date), { recursive: true });
@@ -177,7 +235,17 @@ export class Days {
     const p = this.photoPath(date, name);
     if (!p) return false;
     await rm(p, { force: true });
+    if (name.startsWith("note-")) await this.syncPhotoLine(date);
     return true;
+  }
+
+  /** content.md 머리말의 "노트사진:" 줄을 지금 있는 공개용 사진 목록으로 맞춥니다 (줄이 있을 때만). */
+  async syncPhotoLine(date) {
+    const text = await readText(this.contentPath(date));
+    if (text == null || !/^노트사진:/m.test(text)) return;
+    const names = await this.publicPhotos(date);
+    const updated = text.replace(/^노트사진:.*$/m, `노트사진: ${names.join(", ")}`);
+    if (updated !== text) await writeFile(this.contentPath(date), updated, "utf8");
   }
 
   // ---------- 초안 작업 ----------
@@ -213,7 +281,8 @@ export class Days {
     if (draft == null) throw new Error("초안이 없습니다.");
     await this.backupContent(date);
     await writeFile(this.contentPath(date), draft, "utf8");
-    return draft;
+    await this.syncPhotoLine(date); // 초안 뒤에 사진을 잘랐어도 머리말이 지금 사진 목록과 맞게
+    return (await readText(this.contentPath(date))) ?? draft;
   }
 
   async writeContent(date, text) {
@@ -244,6 +313,15 @@ export class Days {
     }
     return null;
   }
+}
+
+/** 화면 안 대화를 대화.md 형식으로. 사용자 차례는 "## 나", claude 차례는 "## Claude". */
+export function conversationMarkdown(date, messages) {
+  const parts = [`# ${date} 묵상 대화 (노트북 도우미에서 claude 와 나눔)`];
+  for (const m of messages) {
+    parts.push(`## ${m.role === "user" ? "나" : "Claude"}\n\n${String(m.text).trim()}`);
+  }
+  return parts.join("\n\n") + "\n";
 }
 
 export function subtitleOf(contentMd) {

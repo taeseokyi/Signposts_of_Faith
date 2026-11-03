@@ -62,6 +62,26 @@ export async function python(args, { cwd, bin = process.env.PYTHON_BIN || DEFAUL
   return run(bin, ["template/build.py", ...args], { cwd, timeoutMs, env: { PYTHONIOENCODING: "utf-8" } });
 }
 
+/**
+ * template/crop.py 로 노트 사진 원본에서 한 영역을 잘라 공개용 JPEG 를 만듭니다.
+ * Pillow 가 필요하므로 PYTHON_BIN 과 다른 파이썬을 쓸 수 있습니다 (CROP_PYTHON_BIN, 예: Windows 에서 "wsl -d Ubuntu -e python3").
+ */
+export async function cropPhoto(src, dst, crop, { cwd, bin = process.env.CROP_PYTHON_BIN || process.env.PYTHON_BIN || DEFAULT_PYTHON, width = 1400 } = {}) {
+  const args = ["template/crop.py", src, dst, "--width", String(width)];
+  for (const k of ["top", "bottom", "left", "right"]) if (crop?.[k] != null) args.push(`--${k}`, String(crop[k]));
+  const r = await run(bin, args, { cwd, timeoutMs: 2 * 60 * 1000, env: { PYTHONIOENCODING: "utf-8" } });
+  let out = null;
+  try {
+    out = JSON.parse(r.stdout.trim().split("\n").pop() || "null");
+  } catch {
+    /* 아래에서 처리 */
+  }
+  if (r.code !== 0 || !out || out.error) {
+    throw new Error(`사진을 자르지 못했습니다: ${out?.error ?? (r.stderr || r.stdout).trim().slice(0, 400)}`);
+  }
+  return out;
+}
+
 /** 저장소 루트에서 git 을 돌립니다. 실패하면 stderr 를 담은 오류를 던집니다. */
 export async function git(args, { cwd, bin = process.env.GIT_BIN || "git", timeoutMs = 3 * 60 * 1000 } = {}) {
   const r = await run(bin, args, { cwd, timeoutMs, env: { GIT_TERMINAL_PROMPT: "0", LANG: "C.UTF-8" } });

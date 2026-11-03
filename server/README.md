@@ -1,8 +1,8 @@
 # 도우미 백엔드 (노트북)
 
-집 노트북에서 돌리는 서버입니다. 폰이나 노트북 브라우저에서 화면(`app/`)을 열어 Claude 데스크톱에서
-나눈 대화와 묵상 노트 사진을 보내면, 노트북의 `claude` CLI 가 WORKFLOW.md 기준으로 `content.md`
-초안을 쓰고, 검토한 뒤 git 으로 발행(commit + push)합니다. 굿뉴스 게시판에는 올리지 않습니다.
+집 노트북에서 돌리는 서버입니다. 폰이나 노트북 브라우저에서 화면(`app/`)을 열어 노트북의 `claude` CLI 와
+묵상 대화를 주고받고 묵상 노트 사진을 올리면, 같은 CLI 가 사진에서 그날 부분을 찾아 주고, WORKFLOW.md 기준으로
+`content.md` 초안을 쓰고, 검토한 뒤 git 으로 발행(commit + push)합니다. 굿뉴스 게시판에는 올리지 않습니다.
 
 ```
 폰 / 노트북 브라우저  ──대화·사진──▶  https://노트북:8788  ──▶  node 서버  ──▶  claude CLI (WSL)
@@ -15,21 +15,36 @@
 
 | 파일 | 어디에 | git |
 |---|---|---|
-| 대화 원문 | `YYYY-MM-DD/대화.md` | 제외 |
+| 대화 원문 (화면에서 주고받은 것을 서버가 씀) | `YYYY-MM-DD/대화.md` | 제외 |
 | 노트 사진 원본 | `YYYY-MM-DD/노트/photo-N.jpg` | 제외 |
 | 공개용 노트 사진 | `YYYY-MM-DD/note-YYYY-MM-DD.jpg` (두 장째부터 `-1`, `-2`) | 커밋 |
 | 그날의 글 | `YYYY-MM-DD/content.md` | 커밋 |
-| 초안·작업 상태·CLI 로그·미리보기 | `server/data/YYYY-MM-DD/`, `server/data/_site/` | 제외 |
+| 대화 세션(`chat.json`)·사진 판독(`scrap.json`)·초안·작업 상태·CLI 로그·미리보기 | `server/data/YYYY-MM-DD/`, `server/data/_site/` | 제외 |
 
 ## 흐름
 
+대화와 노트 사진이 **기초자료**입니다. 둘(또는 하나)이 준비되면 화면 맨 위 **기초자료로 발행** 버튼 하나로
+`사진에서 이 날짜 부분 자르기 → 초안 쓰기와 검사 → content.md → 발행` 을 노트북이 이어서 합니다 (`POST /api/days/:date/run`).
+단계마다 상태가 화면에 보이고, 다음 경우에는 발행 앞에서 멈추고 까닭을 알려 줍니다.
+
+- 노트 사진에서 이 날짜 부분을 찾지 못했을 때 (날짜가 틀렸을 가능성)
+- 자를 영역 안에 실명·본당·가족 사정처럼 공개하면 안 될 줄이 보일 때 → 2단계 편집기에서 직접 자른 뒤 다시 발행
+- 초안을 쓴 claude 가 `hold` 를 올렸을 때 (독서가 날짜와 안 맞아 보임, 개인 정보 의심, 노트를 거의 못 읽음) → 4단계에서 보고 5단계에서 발행
+- "발행 전에 멈추기"를 골랐을 때 (content.md 까지만)
+- 초안이 세 번 만에도 [오류]를 못 없앴을 때는 실패로 두고 4단계에서 직접 고칩니다
+
+공개용 사진이 이미 있으면 자르기 단계를 건너뛰고, 같은 사진들을 이미 판독했으면(`scrap.json`) 다시 보지 않습니다.
+서버에서 자르는 데는 Pillow 가 필요합니다 (`pip install pillow`). Windows 의 python 에 없으면 `CROP_PYTHON_BIN=wsl -d Ubuntu -e python3` 처럼 WSL 쪽을 쓰게 합니다.
+
+단계를 나눠서 하려면 아래 1~7 을 그대로 쓰면 됩니다.
+
 1. **날짜 폴더 만들기** — 날짜는 독서 장절로 정합니다.
-2. **대화 저장** — Claude 데스크톱의 대화를 복사해 붙여 넣습니다. 없어도 됩니다 (노트만으로 물음을 다시 세웁니다).
-3. **사진** — 원본은 `노트/`에 그대로 보관, 공개용은 폰 갤러리에서 그날 부분만 잘라 올립니다. 공개용은 가로 1400px 로 줄여 보내므로 촬영 정보(위치 포함)가 모두 지워집니다.
+2. **묵상 대화** — 화면에서 `claude` 와 바로 주고받습니다. 첫 턴은 WORKFLOW.md 2장 대화 원칙을 담은 시스템 프롬프트로 세션을 열고, 다음 턴부터 `claude -p --resume <세션>` 으로 잇습니다. 답은 `stream-json` 으로 받아 글자가 나오는 대로 화면에 흘려 보냅니다. 턴이 끝날 때마다 서버가 전체 대화를 `대화.md` 로 다시 씁니다 (`## 나` / `## Claude`). 대화 중 "노트를 봐 줘" 하면 올려 둔 노트 사진 원본을 Read 로 봅니다. Claude 데스크톱 대화를 붙여 넣는 길도 접힌 칸에 남겨 두었습니다. 둘 다 없어도 됩니다 (노트만으로 물음을 다시 세웁니다).
+3. **사진** — 원본은 `노트/`에 그대로 보관합니다. 여러 장, 여러 날이 섞인 사진이어도 됩니다. **이 날짜 부분 찾기**를 누르면 `claude -p` 가 사진마다 날짜 표시·장절로 그날 부분을 찾아 `{has_day, crop:{top,bottom,left,right}, evidence, other_days, private}` 를 JSON 으로 냅니다 (`server/data/<날짜>/scrap.json`, `scrap.log`). 화면의 자르기 편집기가 그 영역을 슬라이더에 넣어 보여 주고, 사람이 확인해서 **잘라서 공개용으로 저장**을 누르면 브라우저 캔버스로 잘라 가로 1400px JPEG 로 올립니다. 캔버스를 거치므로 촬영 정보(위치 포함)가 모두 지워집니다. 공개용이 두 장 이상이면 `-1`, `-2` 로 번호를 붙이고, `content.md` 가 있으면 머리말의 `노트사진:` 줄을 지금 목록으로 맞춥니다.
 4. **초안 만들기** — `claude -p` 가 `WORKFLOW.md`, `template/content_template.md`, 가장 최근 `content.md` 본보기, 대화, 사진을 Read 로 읽고 JSON 스키마로 `content.md` 전문·8장 기록 블록·확인할 점을 냅니다. 서버가 `python template/build.py check` 로 검사해 [오류]가 있으면 그 목록을 붙여 최대 3번까지 다시 시킵니다.
 5. **content.md 로 올리기 → 다듬기** — 화면에서 고치고 저장할 때마다 검사합니다. 사실 확인(전례일·장절·교리서 항·인용)은 사람이 합니다.
 6. **미리보기** — `python template/build.py site --no-pdf` 로 `server/data/_site/` 를 만들어 `/preview/` 에 띄웁니다.
-7. **발행** — `content.md`, 공개용 사진, WORKFLOW.md 8장 기록(초안의 블록을 `### (다음 기록은 여기에 이어서)` 앞에 끼움)을 `git add` → `commit "YYYY-MM-DD 묵상: 부제"` → `push`. push 가 막히면 커밋만 남기고 알려 줍니다.
+7. **발행** — 원격이 앞서 있으면 먼저 `git pull --ff-only` 로 받고, `content.md`, 공개용 사진, WORKFLOW.md 8장 기록(초안의 블록을 `### (다음 기록은 여기에 이어서)` 앞에 끼움)을 `git add` → `commit "YYYY-MM-DD 묵상: 부제"` → `push`. push 가 막히면 커밋만 남기고 알려 줍니다.
 
 claude CLI 에는 Read 도구만 줍니다. 저장소를 고치는 것은 서버이고, 커밋과 push 는 화면에서 **발행**을 눌렀을 때만 합니다.
 
@@ -117,6 +132,7 @@ Start-ScheduledTask    -TaskPath '\tsyi\' -TaskName 'Signposts helper'
 | `CLAUDE_BIN` | `claude` | 실행할 명령. 앞에 `wsl -d Ubuntu -e` 를 붙일 수 있습니다 |
 | `CLAUDE_MODEL` | (CLI 기본값) | `opus`, `sonnet` 등 |
 | `PYTHON_BIN` | `python` (Windows) / `python3` | `template/build.py` 를 돌릴 파이썬 |
+| `CROP_PYTHON_BIN` | `PYTHON_BIN` 과 같음 | 사진 자르기(`template/crop.py`, Pillow 필요)에 쓸 파이썬. Windows: `wsl -d Ubuntu -e python3` |
 | `GIT_BIN` | `git` | |
 | `MAX_UPLOAD_MB` | `200` | 한 번에 받는 최대 용량 |
 | `TLS` | `on` | `off` 로 두면 http |
@@ -146,11 +162,15 @@ Start-ScheduledTask    -TaskPath '\tsyi\' -TaskName 'Signposts helper'
 | POST | `/api/login` | `{token}` → 쿠키. `<img>` 와 미리보기 페이지용 |
 | GET | `/api/days` | 날짜 폴더 목록과 상태 |
 | POST | `/api/days` | `{date}` 새 날짜 폴더 |
-| GET | `/api/days/:date` | 대화, 사진 목록, content.md, 초안, 기록, 작업 상태 |
-| PUT | `/api/days/:date/conversation` | `{text}` → `대화.md` (비우면 지움) |
+| GET | `/api/days/:date` | 대화(`chat`), 사진 판독(`scrap`), 사진 목록, content.md, 초안, 기록, 작업 상태 |
+| POST | `/api/days/:date/chat` | `{text}` 한 턴. NDJSON 스트림: `{delta}`… `{status}`… `{done, text, costUsd, chatTurns}` 또는 `{error}` |
+| GET / DELETE | `/api/days/:date/chat` | 대화 보기 / 모두 지우기 (`chat.json` 과 `대화.md`) |
+| PUT | `/api/days/:date/conversation` | `{text}` → `대화.md` 붙여 넣기 (비우면 지움) |
+| POST | `/api/days/:date/scrap` | `{photos?:[이름]}` 노트 사진에서 이 날짜 부분 찾기 → `{scrap}` |
 | POST | `/api/days/:date/photos` | `{photos:[{kind:"note"|"public", mediaType, base64}]}` |
 | GET / DELETE | `/api/days/:date/photos/:name` | 사진 보기 / 지우기 |
-| POST | `/api/days/:date/draft` | `{instructions}` 초안 작업 등록 (한 번에 하나씩) |
+| POST | `/api/days/:date/run` | `{instructions?, stopBeforePublish?}` 한 번에 발행 작업 등록. 진행은 `GET /api/days/:date` 의 `job.steps` |
+| POST | `/api/days/:date/draft` | `{instructions}` 초안만 (한 번에 하나씩) |
 | POST | `/api/days/:date/draft/apply` | 초안을 `content.md` 로 (있던 것은 `server/data/` 에 사본) |
 | PUT | `/api/days/:date/content` | `{text}` 저장하고 검사 |
 | GET | `/api/days/:date/check` | `content.md` 검사 결과 |
@@ -162,7 +182,8 @@ Start-ScheduledTask    -TaskPath '\tsyi\' -TaskName 'Signposts helper'
 ## 문제가 생기면
 
 - **`claude 명령을 찾지 못했습니다`** — `CLAUDE_BIN` 에 절대 경로를 적으세요.
-- **`구조화된 초안을 받지 못했습니다`** — `server/data/<날짜>/claude-N.log` 에 CLI 의 원본 출력이 있습니다. 로그인이 풀렸거나, 사진을 못 읽었거나, `unknown option` 이 있으면 CLI 버전 차이입니다.
+- **대화가 `앞 대화에 아직 답하는 중입니다` 로 막힘** — 한 날짜에 한 턴씩만 돌립니다. 화면을 닫아도 노트북에서는 답을 끝내고 저장하므로 잠시 뒤 새로 고치면 됩니다.
+- **`구조화된 답을 받지 못했습니다` / `구조화된 초안을 받지 못했습니다`** — `server/data/<날짜>/claude-N.log` (초안) 또는 `scrap.log` (사진 판독) 에 CLI 의 원본 출력이 있습니다. 로그인이 풀렸거나, 사진을 못 읽었거나, `unknown option` 이 있으면 CLI 버전 차이입니다.
 - **`content.md 검사(python)를 돌리지 못했습니다`** — `PYTHON_BIN` 과 파이썬 버전(3.12 이상)을 확인하세요. 노트북에서 `python template/build.py check <날짜>` 를 직접 돌려 보세요.
 - **push 되지 않음** — 커밋은 남아 있습니다. 노트북 터미널에서 `git push` 를 하고, 자격 증명이 저장돼 있는지 확인하세요. 원격이 앞서 있으면(화면의 git 상태에 "원격이 N개 앞섬") 먼저 `git pull` 합니다.
 - **폰에서 연결이 안 됨** — 서버가 떠 있는지(`node server/launch.mjs status`), 같은 Wi-Fi 인지, 방화벽과 포트 전달, 루트 인증서 설치 순으로 봅니다.
