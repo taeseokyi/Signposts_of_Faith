@@ -61,7 +61,8 @@ export function parseRef(input) {
   const book = findBook(m[1]);
   if (!book) return null;
   const chapter = Number(m[2]);
-  const spec = m[3].replace(/절/g, "").replace(/\s+/g, "").replace(/[–—~]/g, "-");
+  // "1장, 1-3절", "1장 1절-3절", "1:1-3", "1,1-3", "1장1절" 모두 같은 뜻. 장 뒤의 쉼표·콜론, "절", 물결표를 정리한다.
+  const spec = m[3].replace(/절/g, "").replace(/\s+/g, "").replace(/[–—~]/g, "-").replace(/^[,:.]+/, "").replace(/[,:.]+$/, "");
   let verses = null;
   if (spec) {
     verses = [];
@@ -127,7 +128,7 @@ export function parseChapter(html) {
  */
 export async function fetchPassage(input) {
   const p = parseRef(input);
-  if (!p) throw Object.assign(new Error(`장절을 알아보지 못했습니다: "${input}" — 예: 요한 15,5-8 · 시편 23,1-4 · 코린토 1서 13,4`), { status: 400 });
+  if (!p) throw Object.assign(new Error(`장절을 알아보지 못했습니다: "${input}" — 예: 15,5-8 · 1장 1-3절 · 23 (장 전체). 책 이름까지 적으면 "요한 15,5-8" 처럼.`), { status: 400 });
   const all = await fetchChapter(p.book, p.chapter);
   if (!all.length) throw new Error(`${p.book.name} ${p.chapter}장을 굿뉴스에서 읽지 못했습니다. 장이 없거나 페이지 구조가 바뀌었을 수 있습니다.`);
   const verses = p.verses ? all.filter((v) => p.verses.includes(v.n)) : all;
