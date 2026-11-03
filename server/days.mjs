@@ -250,8 +250,8 @@ export class Days {
       return false;
     }
     await mkdir(this.dir(date), { recursive: true });
-    const text = chat.messages.length ? conversationMarkdown(date, chat.messages, await this.readings(date), pasted) : pasted + "\n";
-    await writeFile(this.conversationPath(date), text, "utf8");
+    // 채팅이 없어도 같은 구조로 쓴다: 제목, 말씀, "## 붙여 넣은 대화". 초안 프롬프트가 한 가지 형식만 알면 된다.
+    await writeFile(this.conversationPath(date), conversationMarkdown(date, chat.messages, await this.readings(date), pasted), "utf8");
     return true;
   }
 
@@ -428,6 +428,10 @@ export class Days {
       .map((e) => e.name)
       .sort()
       .reverse();
+    // 같은 날 둘째 글(-2)은 머리말 독서가 다르므로 본보기로 쓰지 않는다. 첫 글이 하나도 없을 때만 쓴다.
+    for (const d of dates.filter((n) => seqOf(n) === 1)) {
+      if (await exists(this.contentPath(d))) return `${d}/content.md`;
+    }
     for (const d of dates) {
       if (await exists(this.contentPath(d))) return `${d}/content.md`;
     }
@@ -442,7 +446,7 @@ export function emptyReadings(date) {
 
 /** 화면 안 대화를 대화.md 형식으로. 사용자 차례는 "## 나", claude 차례는 "## Claude". 말씀이 있으면 첫머리에 "## 말씀" 절. */
 export function conversationMarkdown(date, messages, readings = null, pasted = "") {
-  const parts = [`# ${date} 묵상 대화 (노트북 도우미에서 claude 와 나눔)`];
+  const parts = [`# ${labelOf(date)} 묵상 대화${messages.length ? " (노트북 도우미에서 claude 와 나눔)" : " (다른 곳에서 나눈 대화를 옮김)"}`];
   if (readings?.readings?.length || readings?.extra?.length) parts.push(`## 말씀${readings.readings?.length ? " (굿뉴스 매일미사에서 가져옴)" : " (직접 더한 말씀)"}\n\n${readingsBlock(readings)}`);
   for (const m of messages) {
     parts.push(`## ${m.role === "user" ? "나" : "Claude"}\n\n${String(m.text).trim()}`);

@@ -195,7 +195,7 @@ async function runJob(date) {
       // 공개용 번호는 파일 이름이 아니라 노트를 읽는 순서(order)를 따릅니다. 날짜 표시가 있는 쪽이 먼저.
       const hits = scrap.photos.filter((p) => p.has_day && (!fresh || fresh.includes(p.file))).sort((a, b) => (a.order || 99) - (b.order || 99));
       if (!hits.length) {
-        await stop("photos", `${fresh ? `새 노트 사진 ${fresh.length}장` : `노트 사진 ${notes.length}장`}에서 ${date} 의 부분을 찾지 못했습니다. 날짜가 맞는지 확인하세요. (${scrap.summary})`);
+        await stop("photos", `${fresh ? `새 노트 사진 ${fresh.length}장` : `노트 사진 ${notes.length}장`}에서 ${dateOf(date)} 의 부분을 찾지 못했습니다. 날짜가 맞는지 확인하세요. (${scrap.summary})`);
         return;
       }
       const risky = hits.find((p) => p.private);
@@ -220,6 +220,9 @@ async function runJob(date) {
   await step("draft", "run");
   const notes = await days.notePhotos(date);
   const readingsNow = await days.readings(date);
+  // 추가 모드에서 "새로 더한 말씀" = 지금 content.md 를 쓴 뒤에 더한 것. 그 앞 것은 이미 글에 들어갔다고 본다.
+  const contentAt = extend ? (await stat(days.contentPath(date)).catch(() => null))?.mtime?.toISOString() ?? "" : "";
+  const newExtra = (readingsNow?.extra ?? []).filter((x) => (x.addedAt ?? "") > contentAt);
   const base = {
     date,
     conversationPath: (await days.summary(date)).hasConversation ? `${date}/대화.md` : null,
@@ -229,7 +232,7 @@ async function runJob(date) {
     instructions: job.instructions ?? "",
     recordExample: await recordExample(),
     readings: readingsNow,
-    extend: extend ? { milestones: job.extendFrom ?? 0, newPhotos: newNotes.map((n) => `${date}/노트/${n}`), extra: readingsNow?.extra ?? [] } : null,
+    extend: extend ? { milestones: job.extendFrom ?? 0, newPhotos: newNotes.map((n) => `${date}/노트/${n}`), extra: newExtra } : null,
   };
   let retry = null;
   let check = null;
@@ -329,7 +332,7 @@ async function chatTurn(date, text, res) {
     // 첫 마디에는 여는 말과 그날 말씀(굿뉴스에서 가져온 것)을 붙입니다. 사용자는 물음만 적습니다. 말씀은 대화.md 첫머리에 따로 남습니다.
     // 붙여 넣은 대화만 있는 날의 첫 턴은 그 대화를 이어 붙여 흐름을 잇습니다.
     const pasted = chat.messages.length ? null : await readFile(days.conversationPath(date), "utf8").catch(() => null);
-    const opening = chat.messages.length ? "" : `${chatOpening({ readings })}\n\n${pasted ? chatCatchUp({ pasted }) + "\n\n다음 물음:\n" : ""}`;
+    const opening = chat.messages.length ? "" : `${chatOpening({ readings, date, ask: !pasted })}\n\n${pasted ? chatCatchUp({ pasted }) + "\n\n다음 물음:\n" : ""}`;
     const stream = (prompt, { resume }) =>
       runner.stream(prompt, {
         systemPrompt: resume ? undefined : chatSystemPrompt({ date }),
@@ -346,7 +349,7 @@ async function chatTurn(date, text, res) {
       console.warn(`[${date}] 세션 ${chat.sessionId} 을 잇지 못해 새로 엽니다: ${error.message.split("\n")[0]}`);
       emit({ status: "지난 세션을 잇지 못해 앞 대화를 이어 붙여 새로 시작합니다…" });
       const catchUp = chatCatchUp({ messages: chat.messages });
-      r = await stream(`${context}\n\n${chatOpening({ readings })}\n\n${catchUp}\n\n다음 물음:\n${text}`, { resume: null });
+      r = await stream(`${context}\n\n${chatOpening({ readings, date, ask: false })}\n\n${catchUp}\n\n다음 물음:\n${text}`, { resume: null });
     }
     chat.messages.push({ role: "user", text, at }, { role: "assistant", text: r.text, at: new Date().toISOString() });
     chat.sessionId = r.sessionId ?? chat.sessionId;
@@ -397,7 +400,9 @@ async function scrapPhotos(date, names) {
     // 대화 첫 마디에 전례일과 장절이 있으면 판단에 보탬이 됩니다.
     const chat = await days.chat(date);
     const first = chat.messages.find((m) => m.role === "user")?.text ?? "";
-    const hint = (readingsSummary(await days.readings(date)) || first.replace(/\s+/g, " ")).slice(0, 400);
+    // 노트의 그날 부분은 미사 독서 장절로 찾으므로, 같은 날 둘째 글이면 첫 글의 말씀을 힌트로 쓴다
+    const hintReadings = seqOf(date) > 1 ? await days.readings(dateOf(date)) : await days.readings(date);
+    const hint = (readingsSummary(hintReadings) || first.replace(/\s+/g, " ")).slice(0, 400);
     const prompt = buildScrapPrompt({ date, photoPaths: wanted.map((n) => `${date}/노트/${n}`), hint });
     const { output, costUsd } = await runner.runJson(prompt, { schema: SCRAP_SCHEMA, maxTurns: 20, logPath: join(days.stateDir(date), "scrap.log") });
     const photos = (Array.isArray(output.photos) ? output.photos : [])
@@ -437,8 +442,10 @@ async function buildPreview() {
 // ---------- 발행 (git) ----------
 
 async function appendRecord(date) {
-  const record = (await readFile(days.recordPath(date), "utf8").catch(() => "")).trim();
+  let record = (await readFile(days.recordPath(date), "utf8").catch(() => "")).trim();
   if (!record) return false;
+  // 블록 제목은 반드시 "### <폴더 이름> · …". claude 가 달력 날짜로 적었으면 고쳐 둔다 (같은 날 둘째 글이 첫 글 블록을 덮지 않게)
+  record = record.replace(/^### \S+/, `### ${date}`);
   const path = join(REPO, "WORKFLOW.md");
   const text = await readFile(path, "utf8");
   // 이미 그날 기록이 있으면 (이정표를 덧붙인 뒤 다시 발행) 그 블록을 새 기록으로 바꾼다. 블록은 다음 "### " 제목 앞까지.
@@ -599,7 +606,7 @@ async function readJson(req) {
 
 // 미리보기 HTML 맨 아래에 끼우는 줄: 도우미로 돌아가기, 같은 날짜의 공개 사이트 쪽.
 function previewBar(rel) {
-  const m = /^\/?(\d{4}-\d{2}-\d{2})(\/|$)/.exec(rel);
+  const m = /^\/?(\d{4}-\d{2}-\d{2}(?:-\d+)?)(\/|$)/.exec(rel);
   const live = m ? `${SITE_URL}${m[1]}/` : SITE_URL;
   return (
     '<div style="position:sticky;bottom:0;background:#5a6b3a;color:#fff;font:14px/1.6 sans-serif;padding:8px 16px;display:flex;gap:18px;flex-wrap:wrap">' +
@@ -709,6 +716,10 @@ const handler = async (req, res) => {
         return;
       }
       // another: 같은 날 하나 더 (YYYY-MM-DD-2 …). 그날 미사 독서는 가져오지 않고 사용자가 더한 말씀으로 묵상한다. 그 밖은 같다.
+      if (body.another && !(await days.exists(body.date))) {
+        send(res, 409, { error: `${body.date} 의 첫 글 폴더가 아직 없습니다. 먼저 '폴더 만들기'로 그날 글을 만드세요.` });
+        return;
+      }
       send(res, 201, { day: body.another ? await days.createAnother(body.date) : await days.create(body.date) });
       return;
     }

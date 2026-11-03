@@ -15,10 +15,11 @@
 
 | 파일 | 어디에 | git |
 |---|---|---|
-| 대화 원문 (화면에서 주고받은 것을 서버가 씀) | `YYYY-MM-DD/대화.md` | 제외 |
+| 대화 원문 (화면 채팅 + 붙여 넣은 대화를 서버가 합쳐 씀) | `YYYY-MM-DD/대화.md` | 제외 |
+| 붙여 넣은 대화 (다른 곳에서 나눈 것) | `server/data/YYYY-MM-DD/pasted.md` | 제외 |
 | 노트 사진 원본 | `YYYY-MM-DD/노트/photo-N.jpg` | 제외 |
 | 공개용 노트 사진 | `YYYY-MM-DD/note-YYYY-MM-DD.jpg` (두 장째부터 `-1`, `-2`) | 커밋 |
-| 그날의 글 | `YYYY-MM-DD/content.md` | 커밋 |
+| 그날의 글 | `YYYY-MM-DD/content.md` (같은 날 둘째 글은 `YYYY-MM-DD-2/`, 머리말 날짜는 달력 날짜) | 커밋 |
 | 대화 세션(`chat.json`)·사진 판독(`scrap.json`)·초안·작업 상태·CLI 로그·미리보기 | `server/data/YYYY-MM-DD/`, `server/data/_site/` | 제외 |
 
 ## 흐름
@@ -44,7 +45,7 @@
 4. **초안 만들기** — `claude -p` 가 `WORKFLOW.md`, `template/content_template.md`, 가장 최근 `content.md` 본보기, 대화, 사진을 Read 로 읽고 JSON 스키마로 `content.md` 전문·8장 기록 블록·확인할 점을 냅니다. 서버가 `python template/build.py check` 로 검사해 [오류]가 있으면 그 목록을 붙여 최대 3번까지 다시 시킵니다.
 5. **content.md 로 올리기 → 다듬기** — 화면에서 고치고 저장할 때마다 검사합니다. 사실 확인(전례일·장절·교리서 항·인용)은 사람이 합니다.
 6. **미리보기** — `python template/build.py site --no-pdf` 로 `server/data/_site/` 를 만들어 `/preview/` 에 띄웁니다.
-7. **발행** — 원격이 앞서 있으면 먼저 `git pull --ff-only` 로 받고, 날짜 폴더 전체(`git add -A` 라서 지운 공개용 사진의 삭제도 포함. `대화.md`, `노트/` 는 .gitignore)와 WORKFLOW.md 8장 기록(초안의 블록을 `### (다음 기록은 여기에 이어서)` 앞에 끼움)을 `commit "YYYY-MM-DD 묵상: 부제"` → `push`. push 가 막히면 커밋만 남기고 알려 줍니다. 이미 발행한 날을 다시 발행하면 새 커밋이 하나 더 생기고 사이트의 그 날짜 페이지가 바뀝니다 (바뀐 것이 없으면 커밋하지 않음). 8장 기록은 다시 붙지 않습니다.
+7. **발행** — 원격이 앞서 있으면 먼저 `git pull --ff-only` 로 받고, 날짜 폴더 전체(`git add -A` 라서 지운 공개용 사진의 삭제도 포함. `대화.md`, `노트/` 는 .gitignore)와 WORKFLOW.md 8장 기록(초안의 블록을 `### (다음 기록은 여기에 이어서)` 앞에 끼움)을 `commit "YYYY-MM-DD 묵상: 부제"` → `push`. push 가 막히면 커밋만 남기고 알려 줍니다. 이미 발행한 날을 다시 발행하면 새 커밋이 하나 더 생기고 사이트의 그 날짜 페이지가 바뀝니다 (바뀐 것이 없으면 커밋하지 않음). 8장 기록은 같은 폴더의 블록이 있으면 새 것으로 바꿉니다.
 
 claude CLI 에는 Read 도구만 줍니다. 저장소를 고치는 것은 서버이고, 커밋과 push 는 화면에서 **발행**을 눌렀을 때만 합니다.
 
@@ -165,11 +166,11 @@ Start-ScheduledTask    -TaskPath '\tsyi\' -TaskName 'Signposts helper'
 | POST | `/api/days` | `{date, another?}` 새 날짜 폴더. `another` 면 같은 날 하나 더 (`YYYY-MM-DD-2` …, 미사 독서는 가져오지 않고 더한 말씀으로 묵상) |
 | GET | `/api/days/:date` | 대화(`chat`), 사진 판독(`scrap`), 사진 목록, content.md, 초안, 기록, 작업 상태 |
 | POST | `/api/days/:date/chat` | `{text}` 한 턴. NDJSON 스트림: `{delta}`… `{status}`… `{done, text, costUsd, chatTurns}` 또는 `{error}`. 지난 세션을 잇지 못하면 앞 대화를 이어 붙여 새 세션으로 잇는다 |
-| GET / DELETE | `/api/days/:date/chat` | 대화 보기 / 모두 지우기 (`chat.json` 과 `대화.md`) |
+| GET / DELETE | `/api/days/:date/chat` | 대화 보기 / 화면 채팅 지우기 (`chat.json`. 붙여 넣은 대화가 있으면 `대화.md` 는 그것으로 다시 씀) |
 | GET | `/api/days/:date/readings` | 굿뉴스 매일미사에서 그날 말씀 (`?refresh=1` 이면 다시 가져옴. 더한 말씀 `extra` 는 남김). 같은 날 둘째 글(`-2`)은 가져오지 않고 빈 틀(`manual`) |
 | POST | `/api/days/:date/readings/extra` | `{ref:"요한 15,5-8"}` 굿뉴스 성경에서 구절을 가져와 그날 말씀에 더함 (`bible.mjs`) → `{readings, added}` |
 | DELETE | `/api/days/:date/readings/extra/:ref` | 더한 구절 빼기 |
-| PUT | `/api/days/:date/conversation` | `{text}` → `대화.md` 붙여 넣기 (비우면 지움) |
+| PUT | `/api/days/:date/conversation` | `{text}` 붙여 넣은 대화 → `pasted.md`, `대화.md` 는 말씀 + 채팅 + 붙여 넣은 대화로 다시 씀 (비우면 지움) |
 | POST | `/api/days/:date/scrap` | `{photos?:[이름]}` 노트 사진에서 이 날짜 부분 찾기 → `{scrap}` |
 | POST | `/api/days/:date/photos` | `{photos:[{kind:"note"|"public", mediaType, base64}]}` |
 | GET / DELETE | `/api/days/:date/photos/:name` | 사진 보기 / 지우기 |

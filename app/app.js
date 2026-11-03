@@ -106,12 +106,13 @@ function askNotifyPermission() {
 /** 작업 결과를 한 줄 제목과 설명으로. */
 function jobOutcome(date, job) {
   const publish = job.mode === "publish";
-  if (job.status === "hold") return { title: `${date} 멈춤 · 확인이 필요합니다`, body: job.holdReason ?? "", kind: "warn" };
-  if (job.status === "error") return { title: `${date} ${publish ? "발행하지 못했습니다" : "초안을 만들지 못했습니다"}`, body: job.error ?? "", kind: "bad" };
-  if (!publish) return { title: `${date} 초안을 만들었습니다`, body: job.title ?? "", kind: "ok" };
-  if (job.publish?.pushed) return { title: `${date} 발행 완료`, body: "", kind: "ok" };
-  if (job.publish) return { title: `${date} 커밋만 됐습니다`, body: job.publish.pushError ?? "push 가 안 됐습니다.", kind: "warn" };
-  return { title: `${date} content.md 까지 만들었습니다`, body: "발행 전에 멈추기를 골라 두었습니다.", kind: "warn" };
+  const name = labelOf(date);
+  if (job.status === "hold") return { title: `${name} 멈춤 · 확인이 필요합니다`, body: job.holdReason ?? "", kind: "warn" };
+  if (job.status === "error") return { title: `${name} ${publish ? "발행하지 못했습니다" : "초안을 만들지 못했습니다"}`, body: job.error ?? "", kind: "bad" };
+  if (!publish) return { title: `${name} 초안을 만들었습니다`, body: job.title ?? "", kind: "ok" };
+  if (job.publish?.pushed) return { title: `${name} 발행 완료`, body: "", kind: "ok" };
+  if (job.publish) return { title: `${name} 커밋만 됐습니다`, body: job.publish.pushError ?? "push 가 안 됐습니다.", kind: "warn" };
+  return { title: `${name} content.md 까지 만들었습니다`, body: "발행 전에 멈추기를 골라 두었습니다.", kind: "warn" };
 }
 
 /** 작업이 막 끝난 것을 보면 화면 안 알림과 기기 알림을 함께 냅니다. */
@@ -258,6 +259,12 @@ async function loadDays() {
     });
     ul.appendChild(li);
   }
+}
+
+/** 폴더 이름 → 사람에게 보이는 이름. "2026-11-03-2" → "2026-11-03 (2)" (서버 labelOf 와 같은 규칙) */
+function labelOf(id) {
+  const m = /^(\d{4}-\d{2}-\d{2})(?:-(\d+))?$/.exec(String(id));
+  return m ? (m[2] ? `${m[1]} (${m[2]})` : m[1]) : String(id);
 }
 
 function escapeHtml(s) {
@@ -426,7 +433,7 @@ function renderDay(day) {
   if (day.hasContent && !$("content-problems").children.length) checkContent().catch(() => {});
 
   // 5. 발행
-  $("commit-msg").placeholder = `${day.date} 묵상: ${day.subtitle ?? "부제"}`;
+  $("commit-msg").placeholder = `${labelOf(day.date)} 묵상: ${day.subtitle ?? "부제"}`;
   $("link-day").href = `${SITE_URL}${day.date}/`;
 }
 
@@ -580,7 +587,9 @@ function renderAuto(day) {
     [day.notes.length > 0, day.notes.length ? `노트 사진 원본 ${day.notes.length}장` : "노트 사진 없음"],
     [day.publicPhotos.length > 0, day.publicPhotos.length ? `공개용 ${day.publicPhotos.length}장 (있으면 자르기 단계는 건너뜀)` : "공개용 사진은 발행할 때 자릅니다"],
     ...(freshNotes(day).length ? [[true, `새로 올린 노트 사진 ${freshNotes(day).length}장 — 발행할 때 이 날짜 부분을 찾아 공개용으로 더합니다`]] : []),
-    ...(day.readings?.extra?.length ? [[true, `더한 말씀 ${day.readings.extra.map((x) => x.ref).join(", ")} — 추가 모드로 발행하면 여는 말씀에 들어갑니다`]] : []),
+    ...(day.readings?.extra?.length
+      ? [[true, (day.seq ?? 1) > 1 ? `이 글의 말씀 ${day.readings.extra.map((x) => x.ref).join(", ")}` : `더한 말씀 ${day.readings.extra.map((x) => x.ref).join(", ")} — 발행하면 여는 말씀에 들어갑니다`]]
+      : (day.seq ?? 1) > 1 ? [[false, "말씀 없음 — 1단계에서 말씀을 더하세요 (둘째 글은 미사 독서를 가져오지 않습니다)"]] : []),
     [day.hasContent, !day.hasContent
       ? "content.md 아직 없음"
       : extend
@@ -638,7 +647,7 @@ async function runAuto() {
     : extend
       ? `\n\n있는 글(이정표 ${state.day.milestones ?? 0}개)은 그대로 두고 새 물음·노트만 덧붙입니다.`
       : "\n\n이미 content.md 가 있는 날입니다. 초안을 새로 써서 덮어쓰며, 손으로 고친 내용은 사본에만 남습니다. 고친 글을 그대로 올리려면 취소하고 5단계 발행을 쓰세요.";
-  if (!confirm(`${state.date}: ${what}${again}\n\n시작할까요?`)) return;
+  if (!confirm(`${labelOf(state.date)}: ${what}${again}\n\n시작할까요?`)) return;
   askNotifyPermission();
   busy($("btn-run"), true);
   try {
@@ -741,10 +750,15 @@ function renderReadings(r) {
   list.innerHTML = "";
   if (!r) {
     title.textContent = "말씀을 아직 불러오지 않았습니다.";
+    $("btn-readings").hidden = false;
+    $("chat-hint-auto").hidden = false;
+    $("chat-hint-manual").hidden = true;
     return;
   }
   const manual = Boolean(r.manual) && !r.readings?.length; // 같은 날 하나 더: 미사 독서 없이 직접 더한 말씀만
   $("btn-readings").hidden = manual;
+  $("chat-hint-auto").hidden = manual;
+  $("chat-hint-manual").hidden = !manual;
   const dot = r.color ? `<span class="color" style="background:${LITURGY_COLORS[r.color] ?? "transparent"}" title="${escapeHtml(r.color)}"></span>` : "";
   title.innerHTML = manual ? "같은 날 하나 더 — 말씀은 아래에서 직접 더합니다" : `${dot}${escapeHtml(r.title || "전례일 모름")}`;
   for (const x of r.readings ?? []) {
@@ -819,7 +833,7 @@ async function addExtra() {
     renderReadings(readings);
     input.value = "";
     $("readings-msg").textContent = "";
-    toast(`${added} 을(를) 더했습니다. 대화에서 바로 물어도 되고, 덧붙이기 발행 때 여는 말씀에 들어갑니다.`, 5000);
+    toast(`${added} 을(를) 더했습니다. 대화에서 바로 물어도 되고, 발행하면 여는 말씀에 들어갑니다.`, 5000);
   } catch (e) {
     if (state.date !== date) return;
     $("readings-msg").textContent = e.message;
@@ -965,7 +979,7 @@ async function sendChat() {
 }
 
 async function clearChat() {
-  if (!confirm("이 날짜의 대화를 모두 지울까요? 대화.md 도 함께 지워집니다.")) return;
+  if (!confirm("이 날짜의 화면 대화를 모두 지울까요? 붙여 넣은 대화는 남습니다.")) return;
   try {
     await api(`/api/days/${state.date}/chat`, { method: "DELETE" });
     renderChat([]);
@@ -1156,7 +1170,7 @@ async function makeDraft() {
   try {
     const extend = extendChecked();
     await api(`/api/days/${state.date}/draft`, { method: "POST", body: { instructions: $("instructions").value, extend } });
-    toast(extend ? "있는 글에 덧붙이기 시작했습니다." : "초안을 만들기 시작했습니다.");
+    toast(extend ? "추가 모드로 초안을 만들기 시작했습니다." : "초안을 만들기 시작했습니다.");
     await refreshDay();
     watchJobs();
   } catch (e) {
@@ -1241,7 +1255,7 @@ async function gitStatus() {
 
 async function publish() {
   if (!state.day?.hasContent) return toast("content.md 가 아직 없습니다.");
-  if (!confirm(`${state.date} 를 커밋하고 GitHub 에 push 합니다. 공개 저장소이고 웹사이트에 바로 실립니다. 계속할까요?`)) return;
+  if (!confirm(`${labelOf(state.date)} 를 커밋하고 GitHub 에 push 합니다. 공개 저장소이고 웹사이트에 바로 실립니다. 계속할까요?`)) return;
   busy($("btn-publish"), true);
   $("publish-msg").textContent = "발행 중…";
   try {

@@ -70,7 +70,7 @@
 
       <div class="panel step">
         <h2><span class="num">1</span> 묵상 대화 <span class="badge" id="b-conv"></span></h2>
-        <p class="hint">노트북의 claude 와 여기서 바로 주고받습니다. 그날 말씀(전례일, 독서·복음 본문)은 굿뉴스 매일미사에서 가져와 첫 마디에 자동으로 붙으니 <b>물음만 적으면 됩니다.</b> 대화는 그대로 <code>대화.md</code> 에 남아 3단계 초안의 바탕이 됩니다 (git 제외).</p>
+        <p class="hint">노트북의 claude 와 여기서 바로 주고받습니다. <span id="chat-hint-auto">그날 말씀(전례일, 독서·복음 본문)은 굿뉴스 매일미사에서 가져와 첫 마디에 자동으로 붙으니 <b>물음만 적으면 됩니다.</b></span><span id="chat-hint-manual" hidden>같은 날 둘째 글이라 미사 독서는 가져오지 않습니다. <b>아래에서 말씀을 먼저 더하고</b> 물음을 적으면 첫 마디에 그 말씀이 붙습니다.</span> 대화는 그대로 <code>대화.md</code> 에 남아 3단계 초안의 바탕이 됩니다 (git 제외).</p>
         <div class="readings" id="readings">
           <div class="row">
             <span class="readings-title" id="readings-title">말씀을 불러오는 중…</span>
@@ -82,7 +82,7 @@
             <input type="text" id="extra-ref" placeholder="장,절 (예: 1,1-3)" autocomplete="off">
             <button id="btn-extra">말씀 더하기</button>
           </div>
-          <p class="hint">묵상하다 떠오른 구절을 굿뉴스 성경에서 가져와 그날 말씀에 더합니다. 대화에서 바로 물을 수 있고, 덧붙이기 발행 때 여는 말씀·근거에 들어갑니다.</p>
+          <p class="hint">묵상하다 떠오른 구절을 굿뉴스 성경에서 가져와 그날 말씀에 더합니다. 대화에서 바로 물을 수 있고, 발행하면 여는 말씀·근거에 들어갑니다. 같은 날 둘째 글에서는 이것이 그 글의 말씀입니다.</p>
           <p class="hint" id="readings-msg"></p>
         </div>
         <div class="chat" id="chat-log"></div>
