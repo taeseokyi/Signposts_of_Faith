@@ -730,7 +730,7 @@ function renderReadings(r) {
     d.innerHTML =
       `<summary>더한 말씀 <span class="ref">${escapeHtml(x.ref)}</span>` +
       (x.bookName ? ` <span class="heading">— ${escapeHtml(x.bookName)}</span>` : "") +
-      `<button class="remove" title="이 구절 빼기">빼기</button></summary><div class="text">${escapeHtml(x.text)}</div>`;
+      `<button class="remove" type="button" title="이 구절 빼기" aria-label="이 구절 빼기">×</button></summary><div class="text">${escapeHtml(x.text)}</div>`;
     d.querySelector(".remove").addEventListener("click", (e) => {
       e.preventDefault();
       removeExtra(x.ref).catch((err) => toast(err.message));
@@ -771,6 +771,11 @@ async function addExtra() {
     return;
   }
   // 책을 골랐고 장절만 적었으면 붙입니다. 책 이름까지 적었으면(한글로 시작) 그대로 보냅니다.
+  if (!book && /^\d/.test(typed)) {
+    $("readings-msg").textContent = "책을 먼저 고르세요. (또는 '요한 15,5-8' 처럼 책 이름까지 적으세요)";
+    $("extra-book").focus();
+    return;
+  }
   const ref = book && /^\d/.test(typed) ? `${book} ${typed}` : typed;
   const date = state.date;
   busy($("btn-extra"), true);

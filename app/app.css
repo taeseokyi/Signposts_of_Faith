@@ -165,7 +165,9 @@ pre.md, pre.git {
 .readings .extra-row select { flex: 1 1 150px; min-width: 0; }
 .readings .extra-row input { flex: 1 1 120px; min-width: 0; }
 .readings details.extra summary .ref { color: var(--accent, var(--gold)); }
-.readings summary .remove { float: right; font-size: 12px; color: var(--sub); background: none; border: 0; cursor: pointer; padding: 0 4px; }
+/* 더한 말씀 빼기: 둥근 × 단추 (사진 지우기 단추와 같은 모양) */
+.readings summary .remove { float: right; width: 26px; height: 26px; padding: 0; margin: -3px 0 0 8px; border-radius: 50%; border: 1px solid var(--line); background: var(--panel); color: var(--bad); font-size: 16px; line-height: 24px; text-align: center; cursor: pointer; }
+.readings summary .remove:hover { background: var(--bad); color: #fff; border-color: var(--bad); }
 .readings .text { white-space: pre-wrap; font-size: 14px; line-height: 1.7; margin: 6px 0 0 4px; padding-left: 10px; border-left: 3px solid var(--line); }
 
 /* ---------- 2단계: 사진 판독과 자르기 ---------- */

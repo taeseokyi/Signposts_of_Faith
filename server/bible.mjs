@@ -56,7 +56,8 @@ export function findBook(raw) {
 export function parseRef(input) {
   const s = String(input).trim().replace(/\s+/g, " ");
   // 책 이름: 숫자(1~3)로 시작할 수 있고, 한글로 끝난다. 그 뒤가 장절.
-  const m = /^([1-3]?\s?[가-힣]+(?:\s[가-힣]+)*?(?:\s?[1-3]서)?)\s*(\d+)\s*(?:[,:장]\s*|$)(.*)$/.exec(s);
+  // 장과 절 사이는 쉼표·콜론·"장"·띄어쓰기 어느 것이든 된다: "1,1-3" "1:1-3" "1장 1-3절" "1 1-3"
+  const m = /^([1-3]?\s?[가-힣]+(?:\s[가-힣]+)*?(?:\s?[1-3]서)?)\s*(\d+)\s*(?:[,:장]\s*|\s+|$)(.*)$/.exec(s);
   if (!m) return null;
   const book = findBook(m[1]);
   if (!book) return null;
@@ -128,7 +129,7 @@ export function parseChapter(html) {
  */
 export async function fetchPassage(input) {
   const p = parseRef(input);
-  if (!p) throw Object.assign(new Error(`장절을 알아보지 못했습니다: "${input}" — 예: 15,5-8 · 1장 1-3절 · 23 (장 전체). 책 이름까지 적으면 "요한 15,5-8" 처럼.`), { status: 400 });
+  if (!p) throw Object.assign(new Error(`장절을 알아보지 못했습니다: "${input}" — 예: 1,1-3 · 1장 1-3절 · 23 (장 전체). 책 이름까지 적으면 "요한 15,5-8" 처럼.`), { status: 400 });
   const all = await fetchChapter(p.book, p.chapter);
   if (!all.length) throw new Error(`${p.book.name} ${p.chapter}장을 굿뉴스에서 읽지 못했습니다. 장이 없거나 페이지 구조가 바뀌었을 수 있습니다.`);
   const verses = p.verses ? all.filter((v) => p.verses.includes(v.n)) : all;
