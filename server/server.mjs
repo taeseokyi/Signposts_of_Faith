@@ -28,8 +28,9 @@ import { timingSafeEqual } from "node:crypto";
 
 import { Days, DAY_RE, subtitleOf } from "./days.mjs";
 import { ClaudeRunner } from "./runner.mjs";
-import { buildDraftPrompt, buildScrapPrompt, chatContext, chatSystemPrompt, RECORD_EXAMPLE_FALLBACK, SCRAP_SCHEMA } from "./prompt.mjs";
+import { buildDraftPrompt, buildScrapPrompt, chatContext, chatSystemPrompt, RECORD_EXAMPLE_FALLBACK, SCRAP_SCHEMA, chatOpening } from "./prompt.mjs";
 import { cropPhoto, git, python } from "./exec.mjs";
+import { fetchReadings, readingsSummary } from "./readings.mjs";
 import { prepareTls } from "./tls.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -211,11 +212,12 @@ async function runJob(date) {
   const base = {
     date,
     conversationPath: (await days.summary(date)).hasConversation ? `${date}/대화.md` : null,
-    photoPaths: notes.map((n) => `${date}/노트/${n}`),
+    photoPaths: orderPhotos(notes, await days.scrap(date)).map((n) => `${date}/노트/${n}`),
     publicPhotos: await days.publicPhotos(date),
     examplePath: await days.examplePath(date),
     instructions: job.instructions ?? "",
     recordExample: await recordExample(),
+    readings: await days.readings(date),
   };
   let retry = null;
   let check = null;
@@ -306,7 +308,9 @@ async function chatTurn(date, text, res) {
     const notes = await days.notePhotos(date);
     const context = chatContext({ date, photoPaths: notes.map((n) => `${date}/노트/${n}`), publicPhotos: await days.publicPhotos(date) });
     // 사진 목록은 턴마다 바뀔 수 있으므로 사용자 말 앞에 붙여 보냅니다. 저장되는 대화에는 들어가지 않습니다.
-    const prompt = `${context}\n\n${text}`;
+    // 첫 마디에는 여는 말과 그날 말씀(굿뉴스에서 가져온 것)을 붙입니다. 사용자는 물음만 적습니다. 말씀은 대화.md 첫머리에 따로 남습니다.
+    const opening = chat.messages.length ? "" : `${chatOpening({ readings: await days.readings(date) })}\n\n`;
+    const prompt = `${context}\n\n${opening}${text}`;
     const r = await runner.stream(prompt, {
       systemPrompt: chat.sessionId ? undefined : chatSystemPrompt({ date }),
       resume: chat.sessionId,
@@ -329,6 +333,18 @@ async function chatTurn(date, text, res) {
 
 // ---------- 노트 사진에서 그 날짜 부분 찾기 ----------
 
+/** 사진 판독 결과가 있으면 그날 글이 이어지는 차례(order)로, 없으면 파일 이름 순서로. 그날 부분이 없는 사진은 뒤로. */
+function orderPhotos(notes, scrap) {
+  const info = new Map((scrap?.photos ?? []).map((p) => [p.file, p]));
+  const rank = (n) => {
+    const p = info.get(n);
+    if (!p) return 50;
+    if (!p.has_day) return 100;
+    return p.order || 50;
+  };
+  return [...notes].sort((a, b) => rank(a) - rank(b) || notes.indexOf(a) - notes.indexOf(b));
+}
+
 const scrapping = new Set();
 
 async function scrapPhotos(date, names) {
@@ -341,7 +357,7 @@ async function scrapPhotos(date, names) {
     // 대화 첫 마디에 전례일과 장절이 있으면 판단에 보탬이 됩니다.
     const chat = await days.chat(date);
     const first = chat.messages.find((m) => m.role === "user")?.text ?? "";
-    const hint = first.replace(/\s+/g, " ").slice(0, 400);
+    const hint = (readingsSummary(await days.readings(date)) || first.replace(/\s+/g, " ")).slice(0, 400);
     const prompt = buildScrapPrompt({ date, photoPaths: wanted.map((n) => `${date}/노트/${n}`), hint });
     const { output, costUsd } = await runner.runJson(prompt, { schema: SCRAP_SCHEMA, maxTurns: 20, logPath: join(days.stateDir(date), "scrap.log") });
     const photos = (Array.isArray(output.photos) ? output.photos : [])
@@ -820,6 +836,23 @@ const handler = async (req, res) => {
       const content = await days.writeContent(date, body.text);
       const check = await checkFile(`${date}/content.md`, date);
       send(res, 200, { ok: true, content, check });
+      return;
+    }
+
+    if (part === "readings" && req.method === "GET") {
+      // 굿뉴스 매일미사에서 그날 말씀을 가져옵니다. 한 번 가져오면 readings.json 에 두고, ?refresh=1 이면 다시 가져옵니다.
+      const refresh = url.searchParams.get("refresh") === "1";
+      let readings = refresh ? null : await days.readings(date);
+      if (!readings) {
+        try {
+          readings = await days.saveReadings(date, await fetchReadings(date));
+          console.log(`[${date}] 말씀 가져옴 · ${readingsSummary(readings)}`);
+        } catch (e) {
+          send(res, 502, { error: `굿뉴스에서 말씀을 가져오지 못했습니다: ${e.message}` });
+          return;
+        }
+      }
+      send(res, 200, { readings });
       return;
     }
 

@@ -98,6 +98,9 @@ button.link { background: none; border: 0; color: var(--gold); font-size: 13px; 
 .days .tag { font-size: 12px; color: var(--sub); border: 1px solid var(--line); border-radius: 999px; padding: 0 7px; }
 .days .tag.ok { color: var(--ok); border-color: var(--ok); }
 .days .tag.run { color: var(--warn); border-color: var(--warn); }
+/* 작업이 도는 날짜: 채운 배경으로 깜박여서 목록에서 바로 보이게 */
+.days .tag.running { color: #fff; background: var(--warn); border-color: var(--warn); font-weight: 700; animation: pulse 1.2s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: 0.35; } }
 .days .tag.bad { color: var(--bad); border-color: var(--bad); }
 
 .thumbs { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
@@ -145,6 +148,16 @@ pre.md, pre.git {
 .msg hr { border: 0; border-top: 1px solid var(--line); margin: 8px 0; }
 .msg code { background: rgba(0,0,0,0.06); padding: 0 4px; border-radius: 4px; }
 #chat-input { margin-top: 0; }
+/* 그날 말씀 (굿뉴스 매일미사) */
+.readings { border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; margin: 6px 0 10px; background: var(--bg); }
+.readings .row { margin: 0; align-items: center; }
+.readings-title { font-weight: 700; flex: 1; }
+.readings-title .color { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; border: 1px solid var(--line); vertical-align: 0; }
+.readings details { margin: 6px 0; }
+.readings summary { cursor: pointer; font-size: 14px; }
+.readings summary .ref { color: var(--gold); font-weight: 700; }
+.readings summary .heading { color: var(--sub); font-size: 13px; }
+.readings .text { white-space: pre-wrap; font-size: 14px; line-height: 1.7; margin: 6px 0 0 4px; padding-left: 10px; border-left: 3px solid var(--line); }
 
 /* ---------- 2단계: 사진 판독과 자르기 ---------- */
 .thumb .tag { position: absolute; bottom: 20px; left: 4px; right: 4px; font-size: 11px; background: rgba(0,0,0,0.55); color: #fff; padding: 0 6px; border-radius: 999px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

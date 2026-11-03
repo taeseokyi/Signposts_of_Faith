@@ -68,12 +68,19 @@
 
       <div class="panel step">
         <h2><span class="num">1</span> 묵상 대화 <span class="badge" id="b-conv"></span></h2>
-        <p class="hint">노트북의 claude 와 여기서 바로 주고받습니다. 전례일과 독서·복음, 첫 물음으로 시작하세요. 대화는 그대로 <code>대화.md</code> 에 남아 3단계 초안의 바탕이 됩니다 (git 제외).</p>
+        <p class="hint">노트북의 claude 와 여기서 바로 주고받습니다. 그날 말씀(전례일, 독서·복음 본문)은 굿뉴스 매일미사에서 가져와 첫 마디에 자동으로 붙으니 <b>물음만 적으면 됩니다.</b> 대화는 그대로 <code>대화.md</code> 에 남아 3단계 초안의 바탕이 됩니다 (git 제외).</p>
+        <div class="readings" id="readings">
+          <div class="row">
+            <span class="readings-title" id="readings-title">말씀을 불러오는 중…</span>
+            <button class="link" id="btn-readings">다시 불러오기</button>
+          </div>
+          <div id="readings-list"></div>
+          <p class="hint" id="readings-msg"></p>
+        </div>
         <div class="chat" id="chat-log"></div>
-        <textarea id="chat-input" rows="3" placeholder="물음을 적고 보내기. 노트 사진을 올렸으면 '노트를 봐 줘' 라고 해도 됩니다."></textarea>
+        <textarea id="chat-input" rows="3" placeholder="물음만 적고 보내기. 노트 사진을 올렸으면 '노트를 봐 줘' 라고 해도 됩니다."></textarea>
         <div class="row">
           <button class="primary" id="btn-chat-send">보내기</button>
-          <button id="btn-chat-template">시작 틀 넣기</button>
           <button class="link" id="btn-chat-clear">대화 지우기</button>
         </div>
         <p class="hint" id="chat-msg"></p>

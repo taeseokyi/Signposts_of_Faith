@@ -39,7 +39,7 @@
 단계를 나눠서 하려면 아래 1~7 을 그대로 쓰면 됩니다.
 
 1. **날짜 폴더 만들기** — 날짜는 독서 장절로 정합니다.
-2. **묵상 대화** — 화면에서 `claude` 와 바로 주고받습니다. 첫 턴은 WORKFLOW.md 2장 대화 원칙을 담은 시스템 프롬프트로 세션을 열고, 다음 턴부터 `claude -p --resume <세션>` 으로 잇습니다. 답은 `stream-json` 으로 받아 글자가 나오는 대로 화면에 흘려 보냅니다. 턴이 끝날 때마다 서버가 전체 대화를 `대화.md` 로 다시 씁니다 (`## 나` / `## Claude`). 대화 중 "노트를 봐 줘" 하면 올려 둔 노트 사진 원본을 Read 로 봅니다. Claude 데스크톱 대화를 붙여 넣는 길도 접힌 칸에 남겨 두었습니다. 둘 다 없어도 됩니다 (노트만으로 물음을 다시 세웁니다).
+2. **묵상 대화** — 날짜를 열면 굿뉴스 매일미사에서 그날의 전례일과 독서·복음 본문을 가져와(`readings.json`) 접어서 보여 주고, 첫 마디에 여는 말과 함께 자동으로 붙입니다. 사용자는 물음만 적습니다. 화면에서 `claude` 와 바로 주고받습니다. 첫 턴은 WORKFLOW.md 2장 대화 원칙을 담은 시스템 프롬프트로 세션을 열고, 다음 턴부터 `claude -p --resume <세션>` 으로 잇습니다. 답은 `stream-json` 으로 받아 글자가 나오는 대로 화면에 흘려 보냅니다. 턴이 끝날 때마다 서버가 전체 대화를 `대화.md` 로 다시 씁니다 (`## 나` / `## Claude`). 대화 중 "노트를 봐 줘" 하면 올려 둔 노트 사진 원본을 Read 로 봅니다. Claude 데스크톱 대화를 붙여 넣는 길도 접힌 칸에 남겨 두었습니다. 둘 다 없어도 됩니다 (노트만으로 물음을 다시 세웁니다).
 3. **사진** — 원본은 `노트/`에 그대로 보관합니다. 여러 장, 여러 날이 섞인 사진이어도 됩니다. **이 날짜 부분 찾기**를 누르면 `claude -p` 가 사진마다 날짜 표시·장절로 그날 부분을 찾아 `{has_day, crop:{top,bottom,left,right}, evidence, other_days, private}` 를 JSON 으로 냅니다 (`server/data/<날짜>/scrap.json`, `scrap.log`). 화면의 자르기 편집기가 그 영역을 슬라이더에 넣어 보여 주고, 사람이 확인해서 **잘라서 공개용으로 저장**을 누르면 브라우저 캔버스로 잘라 가로 1400px JPEG 로 올립니다. 캔버스를 거치므로 촬영 정보(위치 포함)가 모두 지워집니다. 공개용이 두 장 이상이면 `-1`, `-2` 로 번호를 붙이고, `content.md` 가 있으면 머리말의 `노트사진:` 줄을 지금 목록으로 맞춥니다.
 4. **초안 만들기** — `claude -p` 가 `WORKFLOW.md`, `template/content_template.md`, 가장 최근 `content.md` 본보기, 대화, 사진을 Read 로 읽고 JSON 스키마로 `content.md` 전문·8장 기록 블록·확인할 점을 냅니다. 서버가 `python template/build.py check` 로 검사해 [오류]가 있으면 그 목록을 붙여 최대 3번까지 다시 시킵니다.
 5. **content.md 로 올리기 → 다듬기** — 화면에서 고치고 저장할 때마다 검사합니다. 사실 확인(전례일·장절·교리서 항·인용)은 사람이 합니다.
@@ -165,6 +165,7 @@ Start-ScheduledTask    -TaskPath '\tsyi\' -TaskName 'Signposts helper'
 | GET | `/api/days/:date` | 대화(`chat`), 사진 판독(`scrap`), 사진 목록, content.md, 초안, 기록, 작업 상태 |
 | POST | `/api/days/:date/chat` | `{text}` 한 턴. NDJSON 스트림: `{delta}`… `{status}`… `{done, text, costUsd, chatTurns}` 또는 `{error}` |
 | GET / DELETE | `/api/days/:date/chat` | 대화 보기 / 모두 지우기 (`chat.json` 과 `대화.md`) |
+| GET | `/api/days/:date/readings` | 굿뉴스 매일미사에서 그날 말씀 (`?refresh=1` 이면 다시 가져옴) |
 | PUT | `/api/days/:date/conversation` | `{text}` → `대화.md` 붙여 넣기 (비우면 지움) |
 | POST | `/api/days/:date/scrap` | `{photos?:[이름]}` 노트 사진에서 이 날짜 부분 찾기 → `{scrap}` |
 | POST | `/api/days/:date/photos` | `{photos:[{kind:"note"|"public", mediaType, base64}]}` |

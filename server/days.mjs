@@ -8,6 +8,7 @@
 //   <저장소>/server/data/2026-10-24/
 //     chat.json             화면에서 claude 와 주고받은 대화 (세션 ID, 메시지). 대화.md 는 여기서 만든다
 //     scrap.json            노트 사진에서 그 날짜 부분을 찾은 결과 (자를 영역 제안)
+//     readings.json         굿뉴스 매일미사에서 가져온 그날의 전례일과 독서·복음 본문
 //     job.json              초안 작업 상태
 //     draft.md              claude 가 낸 초안
 //     record.md             WORKFLOW.md 8장에 붙일 기록
@@ -15,6 +16,7 @@
 
 import { mkdir, readFile, writeFile, readdir, rm, stat, copyFile, rename } from "node:fs/promises";
 import { join } from "node:path";
+import { readingsBlock } from "./readings.mjs";
 
 export const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 const IMAGE_RE = /\.(jpe?g|png|webp|heic)$/i;
@@ -74,6 +76,28 @@ export class Days {
     return join(this.stateDir(date), "scrap.json");
   }
 
+  readingsPath(date) {
+    return join(this.stateDir(date), "readings.json");
+  }
+
+  async readings(date) {
+    const raw = await readText(this.readingsPath(date));
+    try {
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  async saveReadings(date, readings) {
+    await mkdir(this.stateDir(date), { recursive: true });
+    await writeFile(this.readingsPath(date), JSON.stringify(readings, null, 2), "utf8");
+    // 대화.md 첫머리의 말씀 절도 맞춘다
+    const chat = await this.chat(date);
+    if (chat.messages.length) await this.writeConversation(date, conversationMarkdown(date, chat.messages, readings));
+    return readings;
+  }
+
   async list() {
     const entries = await readdir(this.repo, { withFileTypes: true }).catch(() => []);
     const dates = entries.filter((e) => e.isDirectory() && DAY_RE.test(e.name)).map((e) => e.name);
@@ -105,7 +129,18 @@ export class Days {
       hasContent: content != null,
       subtitle: content ? subtitleOf(content) : null,
       hasDraft: await exists(this.draftPath(date)),
-      job: job && { status: job.status, mode: job.mode, attempts: job.attempts, error: job.error, hold: job.hold, finishedAt: job.finishedAt },
+      job: job && {
+        status: job.status,
+        mode: job.mode,
+        attempts: job.attempts,
+        error: job.error,
+        hold: job.hold,
+        holdReason: job.holdReason,
+        title: job.title,
+        startedAt: job.startedAt,
+        finishedAt: job.finishedAt,
+        publish: job.publish && { commit: job.publish.commit, pushed: job.publish.pushed, pushError: job.publish.pushError, url: job.publish.url },
+      },
     };
   }
 
@@ -120,6 +155,7 @@ export class Days {
       notes: await this.notePhotos(date),
       draft: (await readText(this.draftPath(date))) ?? "",
       record: (await readText(this.recordPath(date))) ?? "",
+      readings: await this.readings(date),
       job: await this.job(date),
     };
   }
@@ -154,7 +190,7 @@ export class Days {
   async saveChat(date, chat) {
     await mkdir(this.stateDir(date), { recursive: true });
     await writeFile(this.chatPath(date), JSON.stringify(chat, null, 2), "utf8");
-    await this.writeConversation(date, conversationMarkdown(date, chat.messages));
+    await this.writeConversation(date, conversationMarkdown(date, chat.messages, await this.readings(date)));
     return chat;
   }
 
@@ -315,9 +351,10 @@ export class Days {
   }
 }
 
-/** 화면 안 대화를 대화.md 형식으로. 사용자 차례는 "## 나", claude 차례는 "## Claude". */
-export function conversationMarkdown(date, messages) {
+/** 화면 안 대화를 대화.md 형식으로. 사용자 차례는 "## 나", claude 차례는 "## Claude". 말씀이 있으면 첫머리에 "## 말씀" 절. */
+export function conversationMarkdown(date, messages, readings = null) {
   const parts = [`# ${date} 묵상 대화 (노트북 도우미에서 claude 와 나눔)`];
+  if (readings?.readings?.length) parts.push(`## 말씀 (굿뉴스 매일미사에서 가져옴)\n\n${readingsBlock(readings)}`);
   for (const m of messages) {
     parts.push(`## ${m.role === "user" ? "나" : "Claude"}\n\n${String(m.text).trim()}`);
   }

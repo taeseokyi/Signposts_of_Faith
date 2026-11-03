@@ -1,3 +1,5 @@
+import { readingsBlock, readingsSummary } from "./readings.mjs";
+
 // claude CLI 에 넘길 프롬프트와 구조화 출력 스키마.
 //
 // CLI 는 저장소 루트를 작업 폴더로 두고 Read 도구만 쓸 수 있습니다. 그래서 경로는 모두
@@ -43,6 +45,7 @@ function list(items) {
  * @param {string} o.instructions    사용자가 덧붙인 지시
  * @param {string} o.recordExample   8장 기록의 본보기 블록
  * @param {object|null} o.retry      {problems: string[], draft: string} 이전 초안의 검사 결과
+ * @param {object|null} o.readings   굿뉴스에서 가져온 그날의 말씀 (없으면 null)
  */
 export function buildDraftPrompt({
   date,
@@ -53,6 +56,7 @@ export function buildDraftPrompt({
   instructions,
   recordExample,
   retry,
+  readings = null,
 }) {
   const parts = [];
 
@@ -71,9 +75,10 @@ ${examplePath ? `3. ${examplePath} — 실제로 완성된 content.md 본보기.
 ${conversationPath
     ? `- 대화 원문: ${conversationPath} — 사용자가 claude 와 나눈 대화 (화면에서 주고받은 것, 또는 붙여 넣은 것). "## 나" 가 사용자, "## Claude" 가 답이다. 사용자의 물음이 곧 이정표의 물음이다.`
     : `- 대화 원문: 없다. 3장 "대화가 남아 있지 않은 날"의 규칙을 따른다. 독서마다 이정표 하나를 두고, 물음은 노트 내용에서 다시 세운다. 여는 말씀의 고지문과 근거의 "참고"에 "그날의 대화가 남아 있지 않아 물음은 노트에서 다시 세웠다"고 밝힌다.`}
-- 묵상 노트 사진 (Read 로 하나씩 열어 손글씨를 읽는다):
+- 묵상 노트 사진 (Read 로 하나씩 열어 손글씨를 읽는다. 그날 글이 이어지는 차례로 나열했다):
 ${list(photoPaths)}
 - 머리말 "노트사진:" 에 적을 공개용 사진 파일 이름: ${publicPhotos.length ? publicPhotos.join(", ") : "(없음 — 빈 칸으로 둔다)"}
+${readings ? `- 이날의 말씀 (굿뉴스 매일미사에서 가져옴): ${readingsSummary(readings)}. 본문은 대화 원문 첫머리 "## 말씀" 절에 있다. 머리말의 전례일·독서·복음장절은 이것을 따른다.` : "- 이날의 말씀: 가져온 것이 없다. 대화와 노트에서 전례일과 장절을 찾는다."}
 
 사진 한 장에 여러 날이 섞여 있을 수 있다. 독서 장절로 ${date} 의 부분을 찾아 그 부분만 쓴다.
 노트에 흐름도(화살표로 이어진 낱말들)와 빨간 글씨·밑줄 메모가 있으면 그것이 "나의 묵상 흐름"과 결론이다.
@@ -174,12 +179,20 @@ export function chatSystemPrompt({ date }) {
 ## 답하는 방식
 
 - 한국어로, 너무 길지 않게. 짧은 소제목·목록·인용 정도의 가벼운 마크다운만 쓴다. 표와 코드는 쓰지 않는다.
-- 전례일·독서·복음을 사용자가 아직 알려 주지 않았으면, 먼저 그것을 묻는다 (장절만 있어도 된다).
+- 전례일과 독서·복음 본문은 보통 첫 마디에 도우미가 붙여 준다 (굿뉴스 매일미사에서 가져온 것). 없으면 먼저 그것을 묻는다 (장절만 있어도 된다).
 - 사용자가 "정리해 줘", "한 줄로" 하고 청하면 물음마다 "기억할 한 문장"을 제안한다. 글 전체(content.md)는 이 대화에서 만들지 않는다. 그것은 다음 단계가 한다.
 - 사용자가 묵상 노트 사진을 보라고 하면 Read 도구로 그 파일을 연다 (경로는 대화에서 알려 준다). 그 밖의 저장소 파일은 사용자가 청할 때만 읽는다.`;
 }
 
 /** 대화 첫 마디에 덧붙이는 안내 (사진 경로 등). 사용자에게는 보이지 않습니다. */
+/** 첫 마디 앞에 붙이는 여는 말과 말씀. 사용자는 물음만 적는다. */
+export function chatOpening({ readings }) {
+  const head = `오늘 독서와 복음으로 묵상하려고 해. 답변에 대한 근거는 항상 마지막에 정리해 줘.
+교과서적인 설명보다 내 삶의 물음에 답해 주고, 족쇄처럼 무거워지지 않게 해 줘.
+정리한 내용은 「신앙의 이정표」로 만들어 웹사이트에 올릴 거야.`;
+  return readings?.readings?.length ? `${head}\n\n${readingsBlock(readings)}\n\n첫 번째 물음:` : head;
+}
+
 export function chatContext({ date, photoPaths, publicPhotos }) {
   const lines = [`[도우미 안내 — 사용자에게 보이지 않는 줄] 날짜 ${date}.`];
   if (photoPaths.length) lines.push(`사용자가 올린 묵상 노트 사진 원본: ${photoPaths.join(", ")} (Read 도구로 볼 수 있다).`);

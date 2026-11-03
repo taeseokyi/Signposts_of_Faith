@@ -3,7 +3,7 @@
 
 const $ = (id) => document.getElementById(id);
 const SITE_URL = "https://taeseokyi.github.io/Signposts_of_Faith/";
-const state = { token: "", date: null, day: null, poll: null, chatting: false, scrapping: false, crop: null, autoModal: null, autoModalDismissed: null, busy: null };
+const state = { token: "", date: null, day: null, poll: null, chatting: false, scrapping: false, crop: null, autoModal: null, autoModalDismissed: null, busy: null, lastJobs: {}, readingsAsked: false };
 
 // ---------- 저장 ----------
 
@@ -92,6 +92,101 @@ function toast(msg, ms = 3200) {
   toastTimer = setTimeout(() => (t.hidden = true), ms);
 }
 
+// ---------- 작업이 끝났을 때 알리기 ----------
+
+/** 발행·초안 단추를 누를 때 한 번 묻습니다 (사용자 조작 안에서만 물을 수 있습니다). */
+function askNotifyPermission() {
+  try {
+    if ("Notification" in window && Notification.permission === "default") Notification.requestPermission().catch(() => {});
+  } catch {
+    /* 지원하지 않는 브라우저 */
+  }
+}
+
+/** 작업 결과를 한 줄 제목과 설명으로. */
+function jobOutcome(date, job) {
+  const publish = job.mode === "publish";
+  if (job.status === "hold") return { title: `${date} 멈춤 · 확인이 필요합니다`, body: job.holdReason ?? "", kind: "warn" };
+  if (job.status === "error") return { title: `${date} ${publish ? "발행하지 못했습니다" : "초안을 만들지 못했습니다"}`, body: job.error ?? "", kind: "bad" };
+  if (!publish) return { title: `${date} 초안을 만들었습니다`, body: job.title ?? "", kind: "ok" };
+  if (job.publish?.pushed) return { title: `${date} 발행했습니다`, body: job.publish.commit ?? "", kind: "ok" };
+  if (job.publish) return { title: `${date} 커밋만 됐습니다`, body: job.publish.pushError ?? "push 가 안 됐습니다.", kind: "warn" };
+  return { title: `${date} content.md 까지 만들었습니다`, body: "발행 전에 멈추기를 골라 두었습니다.", kind: "warn" };
+}
+
+/** 작업이 막 끝난 것을 보면 화면 안 알림과 기기 알림을 함께 냅니다. */
+function announceJobDone(date, job) {
+  const o = jobOutcome(date, job);
+  toast(o.title, 8000);
+  try {
+    navigator.vibrate?.([150, 80, 150]);
+  } catch {
+    /* 무시 */
+  }
+  try {
+    if (!("Notification" in window) || Notification.permission !== "granted") return;
+    const opts = { body: o.body, tag: `job-${date}`, icon: "icons/icon-192.png", data: { date } };
+    if (navigator.serviceWorker?.controller) navigator.serviceWorker.ready.then((reg) => reg.showNotification(o.title, opts)).catch(() => new Notification(o.title, opts));
+    else new Notification(o.title, opts);
+  } catch {
+    /* 알림을 못 내도 화면 안 알림은 이미 냈습니다 */
+  }
+}
+
+/** 날짜마다 마지막으로 본 작업 상태를 기억하고, 바뀌었는지·막 끝났는지를 돌려줍니다. */
+function jobChange(date, job) {
+  const prev = state.lastJobs[date];
+  const now = job ? job.status : null;
+  state.lastJobs[date] = now;
+  const wasRunning = prev === "running" || prev === "queued";
+  return { changed: prev !== undefined && prev !== now, finished: wasRunning && Boolean(job) && !jobRunning(job) };
+}
+
+/** 작업이 끝난 것을 처음 본 쪽이 부릅니다. 알리고, 그 날짜가 열려 있으면 결과 창을 다시 엽니다. */
+function onJobFinished(date, job) {
+  announceJobDone(date, job);
+  if (state.date === date && job.mode === "publish") {
+    state.autoModal = job.startedAt ?? "";
+    state.autoModalDismissed = null;
+  }
+}
+
+// 어느 화면에 있든 작업이 도는 동안 몇 초마다 목록을 물어, 끝나면 알리고 보고 있는 화면을 새로 그립니다.
+let watchTimer = null;
+let watching = false; // 한 번에 하나만 돌게 (겹쳐 부르면 그냥 돌아감)
+async function watchJobs() {
+  if (watching || !state.token) return;
+  watching = true;
+  clearTimeout(watchTimer);
+  watchTimer = null;
+  let running = false;
+  try {
+    const { days } = await api("/api/days");
+    let listChanged = false;
+    let finishedOpenDay = false;
+    for (const d of days) {
+      const c = jobChange(d.date, d.job);
+      if (c.changed) listChanged = true;
+      if (c.finished) {
+        onJobFinished(d.date, d.job);
+        if (state.date === d.date) finishedOpenDay = true;
+      }
+      if (jobRunning(d.job)) running = true;
+    }
+    if (listChanged && !$("view-days").hidden) loadDays().catch(() => {});
+    const busy = days.find((d) => jobRunning(d.job))?.date ?? null;
+    const busyChanged = busy !== state.busy;
+    state.busy = busy;
+    // 열어 둔 날짜가 끝났거나, 다른 날짜의 작업이 시작·종료돼 단추 잠금이 바뀌면 그 화면을 새로 그립니다.
+    if (state.date && (finishedOpenDay || busyChanged)) refreshDay().catch(() => {});
+  } catch {
+    running = Object.values(state.lastJobs).some((st) => st === "running" || st === "queued");
+  } finally {
+    watching = false;
+  }
+  if (running) watchTimer = setTimeout(watchJobs, 8000);
+}
+
 function show(view) {
   for (const id of ["view-settings", "view-days", "view-day"]) $(id).hidden = id !== view;
   $("btn-back").hidden = view !== "view-day";
@@ -128,8 +223,14 @@ function renderProblems(ul, problems) {
 
 async function loadDays() {
   const { days } = await api("/api/days");
+  if (!$("view-day").hidden) return; // 그 사이 날짜를 열었음
   const ul = $("days");
   ul.innerHTML = "";
+  // 끝난 작업의 알림과 목록 갱신은 watchJobs 가 맡습니다. 여기서는 상태만 기억해 둡니다.
+  for (const d of days) {
+    if (jobChange(d.date, d.job).finished) onJobFinished(d.date, d.job);
+  }
+  if (days.some((d) => jobRunning(d.job))) watchJobs();
   if (!days.length) {
     ul.innerHTML = '<li class="sub">아직 날짜 폴더가 없습니다.</li>';
     return;
@@ -140,7 +241,7 @@ async function loadDays() {
     if (d.hasConversation) tags.push(["대화", ""]);
     if (d.noteCount) tags.push([`원본 ${d.noteCount}장`, ""]);
     if (d.publicPhotos.length) tags.push([`사진 ${d.publicPhotos.length}장`, ""]);
-    if (d.job?.status === "running" || d.job?.status === "queued") tags.push([d.job.mode === "publish" ? "발행 작업 중" : "초안 작성 중", "run"]);
+    if (d.job?.status === "running" || d.job?.status === "queued") tags.push([d.job.mode === "publish" ? "발행 작업 중" : "초안 작성 중", "running"]);
     else if (d.job?.status === "error") tags.push([d.job.mode === "publish" ? "발행 실패" : "초안 실패", "bad"]);
     else if (d.job?.status === "hold") tags.push(["확인 필요", "run"]);
     else if (d.hasDraft) tags.push(["초안", ""]);
@@ -182,6 +283,7 @@ async function openDay(date) {
   state.date = date;
   state.autoModal = null;
   state.autoModalDismissed = null;
+  state.readingsAsked = false;
   closeCrop();
   $("photo-msg").textContent = "";
   $("chat-msg").textContent = "";
@@ -214,7 +316,9 @@ async function refreshDay() {
   if (state.date !== date) return; // 그 사이 다른 화면으로 나갔음
   state.day = day;
   state.busy = busy; // 지금 작업 중인 날짜 (다른 날짜일 수 있음)
+  if (jobChange(date, day.job).finished) onJobFinished(date, day.job);
   renderDay(day);
+  if (jobRunning(day.job)) watchJobs();
   // 작업 중이면 몇 초마다 다시 봅니다. 다른 날짜의 작업이 도는 동안도 끝나면 단추를 풀어야 하니 느리게 봅니다.
   if (jobRunning(day.job)) pollLater(4000);
   else if (busy && busy !== date) pollLater(8000);
@@ -229,7 +333,12 @@ function renderDay(day) {
   // 0. 한 번에 발행
   renderAuto(day);
 
-  // 1. 대화
+  // 1. 대화 — 그날 말씀이 아직 없으면 굿뉴스에서 한 번 가져옵니다
+  if (day.readings) renderReadings(day.readings);
+  else if (!state.readingsAsked) {
+    state.readingsAsked = true;
+    loadReadings().catch(() => {});
+  }
   const turns = day.chatTurns ?? 0;
   if (!state.chatting) renderChat(day.chat?.messages ?? []);
   if (document.activeElement !== $("conversation")) $("conversation").value = turns ? "" : day.conversation;
@@ -456,12 +565,14 @@ async function runAuto() {
   const what = stop ? "사진 자르기 → 초안 → content.md 까지 만들고 발행 앞에서 멈춥니다." : "사진 자르기 → 초안 → content.md → 커밋과 push 까지 한 번에 합니다. 공개 저장소이고 웹사이트에 바로 실립니다.";
   const again = state.day.hasContent ? "\n\n이미 content.md 가 있는 날입니다. 초안을 새로 써서 덮어쓰며, 손으로 고친 내용은 사본에만 남습니다. 고친 글을 그대로 올리려면 취소하고 5단계 발행을 쓰세요." : "";
   if (!confirm(`${state.date}: ${what}${again}\n\n시작할까요?`)) return;
+  askNotifyPermission();
   busy($("btn-run"), true);
   try {
     await api(`/api/days/${state.date}/run`, { method: "POST", body: { instructions: $("instructions").value, stopBeforePublish: stop } });
     state.autoModal = null;
     state.autoModalDismissed = null;
     await refreshDay();
+    watchJobs();
   } catch (e) {
     toast(e.message, 6000);
     busy($("btn-run"), false);
@@ -546,6 +657,50 @@ function chatBubble(role, text) {
   return div;
 }
 
+// ---------- 그날 말씀 (굿뉴스 매일미사) ----------
+
+const LITURGY_COLORS = { 녹: "#3f8f4a", 백: "#f2efe6", 자: "#6b3d8f", 홍: "#b3303a", 장: "#e2a0a0", 흑: "#333" };
+
+function renderReadings(r) {
+  const title = $("readings-title");
+  const list = $("readings-list");
+  list.innerHTML = "";
+  if (!r) {
+    title.textContent = "말씀을 아직 불러오지 않았습니다.";
+    return;
+  }
+  const dot = r.color ? `<span class="color" style="background:${LITURGY_COLORS[r.color] ?? "transparent"}" title="${escapeHtml(r.color)}"></span>` : "";
+  title.innerHTML = `${dot}${escapeHtml(r.title || "전례일 모름")}`;
+  for (const x of r.readings ?? []) {
+    const d = document.createElement("details");
+    d.innerHTML =
+      `<summary>${escapeHtml(x.kind)} <span class="ref">${escapeHtml(x.ref)}</span>` +
+      (x.heading ? ` <span class="heading">— ${escapeHtml(x.heading)}</span>` : "") +
+      `</summary><div class="text">${escapeHtml(x.text)}</div>`;
+    list.appendChild(d);
+  }
+}
+
+/** 서버에 그날 말씀을 청합니다 (한 번 가져오면 서버가 간직하고, refresh 면 다시 가져옵니다). */
+async function loadReadings(refresh = false) {
+  const date = state.date;
+  $("readings-msg").textContent = "";
+  $("readings-title").textContent = refresh ? "다시 불러오는 중…" : "말씀을 불러오는 중…";
+  busy($("btn-readings"), true);
+  try {
+    const { readings } = await api(`/api/days/${date}/readings${refresh ? "?refresh=1" : ""}`, { timeoutMs: 40000 });
+    if (state.date !== date) return;
+    if (state.day) state.day.readings = readings;
+    renderReadings(readings);
+  } catch (e) {
+    if (state.date !== date) return;
+    renderReadings(null);
+    $("readings-msg").textContent = `${e.message} — 전처럼 본문을 물음과 함께 붙여 넣어도 됩니다.`;
+  } finally {
+    busy($("btn-readings"), false);
+  }
+}
+
 function renderChat(messages) {
   const log = $("chat-log");
   log.innerHTML = "";
@@ -553,15 +708,6 @@ function renderChat(messages) {
   log.scrollTop = log.scrollHeight;
 }
 
-const CHAT_TEMPLATE = `오늘 독서와 복음으로 묵상하려고 해. 답변에 대한 근거는 항상 마지막에 정리해 줘.
-교과서적인 설명보다 내 삶의 물음에 답해 주고, 족쇄처럼 무거워지지 않게 해 줘.
-정리한 내용은 「신앙의 이정표」로 만들어 웹사이트에 올릴 거야.
-
-전례일: 
-독서: (장절과 본문)
-복음: (장절과 본문)
-
-첫 번째 물음: `;
 
 async function sendChat() {
   const input = $("chat-input");
@@ -844,11 +990,13 @@ async function deletePhoto(name) {
 // ---------- 초안 ----------
 
 async function makeDraft() {
+  askNotifyPermission();
   busy($("btn-draft"), true);
   try {
     await api(`/api/days/${state.date}/draft`, { method: "POST", body: { instructions: $("instructions").value } });
     toast("초안을 만들기 시작했습니다.");
     await refreshDay();
+    watchJobs();
   } catch (e) {
     toast(e.message);
     busy($("btn-draft"), false);
@@ -980,13 +1128,7 @@ function wire() {
   $("chat-input").addEventListener("keydown", (e) => {
     if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) sendChat();
   });
-  $("btn-chat-template").addEventListener("click", () => {
-    const input = $("chat-input");
-    if (input.value.trim() && !confirm("적던 내용을 지우고 시작 틀을 넣을까요?")) return;
-    input.value = CHAT_TEMPLATE;
-    input.focus();
-    input.setSelectionRange(input.value.indexOf("전례일: ") + 5, input.value.indexOf("전례일: ") + 5);
-  });
+  $("btn-readings").addEventListener("click", () => loadReadings(true));
   $("btn-chat-clear").addEventListener("click", clearChat);
   $("btn-scrap").addEventListener("click", scrapPhotos);
   for (const k of CROP_KEYS) $(`crop-${k}`).addEventListener("input", drawCropBox);
@@ -1022,13 +1164,17 @@ async function main() {
     const back = /^#(\d{4}-\d{2}-\d{2})$/.exec(location.hash);
     if (back) openDay(back[1]).catch((e) => toast(e.message));
     else loadDays().catch((e) => toast(e.message));
+    watchJobs();
   }
 }
 
 // 폰 화면을 다시 켜거나 앱으로 돌아오면 열어 둔 날짜의 상태를 새로 묻습니다.
-function refreshOnReturn() {
-  if (document.visibilityState !== "visible" || !state.date || !state.token) return;
-  refreshDay().catch(() => {});
+function refreshOnReturn(e) {
+  if (e?.type === "pageshow" && !e.persisted) return; // 처음 열릴 때는 main() 이 이미 읽는다
+  if (document.visibilityState !== "visible" || !state.token) return;
+  if (state.date) refreshDay().catch(() => {});
+  else if (!$("view-days").hidden) loadDays().catch(() => {});
+  watchJobs();
 }
 document.addEventListener("visibilitychange", refreshOnReturn);
 window.addEventListener("pageshow", refreshOnReturn);
