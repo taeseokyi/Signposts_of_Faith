@@ -585,7 +585,7 @@ function renderAuto(day) {
   } else if (job.status === "done" && job.publish) {
     setBadge("b-auto", job.publish.pushed ? "발행 완료" : "커밋만 됨", job.publish.pushed ? "ok" : "warn");
     msg.innerHTML = job.publish.pushed
-      ? `커밋 <code>${escapeHtml(job.publish.commit)}</code> · 몇 분 뒤 <a href="${job.publish.url}" target="_blank" rel="noopener">${job.publish.url}</a> 에 실립니다.` +
+      ? `커밋 <code>${escapeHtml(job.publish.commit)}</code> · 몇 분 뒤 <a href="${job.publish.url}" target="_blank" rel="noopener">웹사이트의 이 날 ↗</a>에 실립니다.` +
         (job.costUsd ? ` · 약 $${job.costUsd.toFixed(2)}` : "")
       : `커밋은 됐지만 push 가 안 됐습니다: ${escapeHtml(job.publish.pushError ?? "")} — 5단계에서 git 상태를 보고 노트북에서 push 하세요.`;
   } else {
@@ -1211,7 +1211,7 @@ async function publish() {
     out.innerHTML =
       `커밋 <code>${escapeHtml(r.commit)}</code> (${r.files.length}개 파일)<br>` +
       (r.pushed
-        ? `push 완료. 몇 분 뒤 <a href="${r.url}" target="_blank" rel="noopener">${r.url}</a> 에 실립니다.`
+        ? `push 완료. 몇 분 뒤 <a href="${r.url}" target="_blank" rel="noopener">웹사이트의 이 날 ↗</a>에 실립니다.`
         : `<span style="color:var(--bad)">push 되지 않았습니다:</span> ${escapeHtml(r.pushError ?? "")}<br>노트북에서 <code>git push</code> 를 직접 해 주세요.`);
     $("publish-msg").textContent = "";
     await gitStatus();

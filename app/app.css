@@ -30,9 +30,13 @@ body {
   font-family: 'Noto Serif KR', 'Nanum Myeongjo', '나눔명조', 'Batang', '바탕', serif;
   font-size: 16px;
   line-height: 1.6;
-  word-break: keep-all;
+  word-break: keep-all; /* 한국어 낱말은 자르지 않고 */
+  overflow-wrap: anywhere; /* URL·파일 이름처럼 띄어쓰기 없는 긴 글자는 상자 안에서 끊는다 */
   padding-bottom: 60px;
 }
+/* 가로로 늘어선 칸(flex 자식)은 긴 글자가 있어도 줄어들 수 있어야 끊긴다 */
+.row > *, .ready li, .links a, .steps.big li > * { min-width: 0; }
+a, code { overflow-wrap: anywhere; }
 .top {
   position: sticky; top: 0; z-index: 5;
   display: flex; align-items: center; gap: 8px;
@@ -119,7 +123,7 @@ ul.review:empty::before { content: "확인할 점 없음"; }
 details { margin: 10px 0; }
 summary { cursor: pointer; color: var(--gold); }
 pre.md, pre.git {
-  white-space: pre-wrap; word-break: break-word; font-size: 13px;
+  white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px;
   background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 10px; max-height: 50vh; overflow: auto;
 }
 #preview-link { color: var(--gold); }
@@ -184,7 +188,8 @@ pre.md, pre.git {
 .ready li::before { content: "○ "; color: var(--sub); }
 .ready li.ok::before { content: "● "; color: var(--ok); }
 .ready li.no { color: var(--sub); }
-label.inline { display: inline-flex; align-items: center; gap: 6px; margin: 0; }
+label.inline { display: inline-flex; align-items: flex-start; gap: 6px; margin: 0; }
+label.inline > input { flex: none; margin-top: 5px; }
 .steps { margin: 8px 0 0; padding-left: 22px; font-size: 14px; }
 .steps:empty { display: none; }
 .steps li { margin: 3px 0; }
