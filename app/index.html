@@ -93,6 +93,7 @@
         <p class="hint">원본은 <code>노트/</code>에 그대로 보관됩니다 (git 제외). 여러 장, 여러 날이 섞인 사진이어도 됩니다. 올린 뒤 <b>이 날짜 부분 찾기</b>를 누르면 claude 가 사진마다 이 날짜의 부분을 찾아 자를 영역을 제안합니다. 확인해서 자르면 공개용(<code>note-날짜.jpg</code>, 가로 1400px, 촬영 정보 제거)으로 저장소에 올립니다.</p>
         <div class="row">
           <label class="file-btn">원본 올리기 (노트/)<input type="file" id="file-note" accept="image/*" multiple></label>
+          <label class="file-btn">📷 찍어서 올리기<input type="file" id="file-camera" accept="image/*" capture="environment"></label>
           <button id="btn-scrap">이 날짜 부분 찾기</button>
           <label class="file-btn">잘라 둔 공개용 올리기<input type="file" id="file-public" accept="image/*" multiple></label>
         </div>

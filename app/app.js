@@ -897,6 +897,7 @@ function wire() {
   $("btn-crop-all").addEventListener("click", () => setCropValues({ top: 0, bottom: 1, left: 0, right: 1 }));
   $("btn-crop-close").addEventListener("click", closeCrop);
   $("file-note").addEventListener("change", (e) => uploadPhotos(e.target.files, "note").then(() => (e.target.value = "")));
+  $("file-camera").addEventListener("change", (e) => uploadPhotos(e.target.files, "note").then(() => (e.target.value = "")));
   $("file-public").addEventListener("change", (e) => uploadPhotos(e.target.files, "public").then(() => (e.target.value = "")));
   $("btn-draft").addEventListener("click", makeDraft);
   $("btn-run").addEventListener("click", runAuto);
