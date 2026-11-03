@@ -534,12 +534,9 @@ function setExtend(value) {
   $("extend-draft").checked = value;
 }
 
-/** 발행 뒤 안내. 끝난 지 10분 안이면 "몇 분 뒤 실립니다", 그 뒤로는 "실려 있습니다" (웹사이트 반영은 push 뒤 몇 분 걸린다). */
+/** 발행 뒤 안내: 발행했습니다 + 웹사이트 링크. */
 function publishedNote(job) {
-  const link = `<a href="${job.publish.url}" target="_blank" rel="noopener">웹사이트의 이 날 ↗</a>`;
-  const t = Date.parse(job.finishedAt ?? "");
-  const recent = Number.isFinite(t) && Date.now() - t < 10 * 60 * 1000;
-  return `「${escapeHtml(job.publish.subject ?? "")}」 발행했습니다. ${recent ? `몇 분 뒤 ${link}에 실립니다.` : `${link}에 실려 있습니다.`}`;
+  return `「${escapeHtml(job.publish.subject ?? "")}」 발행했습니다. <a href="${job.publish.url}" target="_blank" rel="noopener">웹사이트의 이 날 ↗</a>`;
 }
 
 function renderAuto(day) {
@@ -581,7 +578,7 @@ function renderAuto(day) {
     setBadge("b-auto", running ? "초안 작업 중" : "", running ? "warn" : "");
     msg.textContent = "";
   } else if (running) {
-    setBadge("b-auto", job.status === "queued" ? "대기 중" : "진행 중", "warn");
+    setBadge("b-auto", job.status === "queued" ? "대기 중" : "발행 중", "warn");
     msg.textContent = "노트북에서 이어서 합니다. 화면을 닫아도 됩니다.";
   } else if (job.status === "hold") {
     setBadge("b-auto", "멈춤 · 확인 필요", "warn");
@@ -1208,7 +1205,7 @@ async function publish() {
   if (!state.day?.hasContent) return toast("content.md 가 아직 없습니다.");
   if (!confirm(`${state.date} 를 커밋하고 GitHub 에 push 합니다. 공개 저장소이고 웹사이트에 바로 실립니다. 계속할까요?`)) return;
   busy($("btn-publish"), true);
-  $("publish-msg").textContent = "커밋하고 push 하는 중…";
+  $("publish-msg").textContent = "발행 중…";
   try {
     const r = await api(`/api/days/${state.date}/publish`, { method: "POST", body: { message: $("commit-msg").value }, timeoutMs: 5 * 60 * 1000 });
     const out = $("publish-result");
@@ -1216,7 +1213,7 @@ async function publish() {
     out.innerHTML =
       `「${escapeHtml(r.subject ?? "")}」 (${r.files.length}개 파일)<br>` +
       (r.pushed
-        ? `push 완료. 몇 분 뒤 <a href="${r.url}" target="_blank" rel="noopener">웹사이트의 이 날 ↗</a>에 실립니다.`
+        ? `발행했습니다. <a href="${r.url}" target="_blank" rel="noopener">웹사이트의 이 날 ↗</a>`
         : `<span style="color:var(--bad)">push 되지 않았습니다:</span> ${escapeHtml(r.pushError ?? "")}<br>노트북에서 <code>git push</code> 를 직접 해 주세요.`);
     $("publish-msg").textContent = "";
     await gitStatus();
