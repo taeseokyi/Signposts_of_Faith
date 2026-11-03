@@ -822,7 +822,7 @@ async function makePreview() {
     const a = $("preview-link");
     a.href = `/preview/${state.date}/`;
     a.hidden = false;
-    $("content-msg").textContent = "미리보기를 만들었습니다. [오류]가 있는 날은 사이트에서 빠집니다.";
+    $("content-msg").textContent = "미리보기를 만들었습니다. [오류]가 있으면 웹사이트에 올리지 않습니다.";
   } catch (e) {
     $("content-msg").textContent = "";
     toast(e.message);
