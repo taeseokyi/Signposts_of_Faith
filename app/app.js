@@ -3,7 +3,7 @@
 
 const $ = (id) => document.getElementById(id);
 const SITE_URL = "https://taeseokyi.github.io/Signposts_of_Faith/";
-const state = { token: "", date: null, day: null, poll: null, chatting: false, scrapping: false, crop: null };
+const state = { token: "", date: null, day: null, poll: null, chatting: false, scrapping: false, crop: null, autoModal: null, autoModalDismissed: null, busy: null };
 
 // ---------- 저장 ----------
 
@@ -180,6 +180,8 @@ async function newDay() {
 
 async function openDay(date) {
   state.date = date;
+  state.autoModal = null;
+  state.autoModalDismissed = null;
   closeCrop();
   $("photo-msg").textContent = "";
   $("chat-msg").textContent = "";
@@ -201,8 +203,9 @@ async function refreshDay() {
   clearTimeout(state.poll);
   const date = state.date;
   let day;
+  let busy = null;
   try {
-    ({ day } = await api(`/api/days/${date}`));
+    ({ day, busy = null } = await api(`/api/days/${date}`));
   } catch (e) {
     // 폰 화면이 꺼졌다 켜지는 사이에 요청이 끊겨도 작업 중이었으면 조금 뒤 다시 묻습니다.
     if (state.date === date && jobRunning(state.day?.job)) pollLater(8000);
@@ -210,9 +213,16 @@ async function refreshDay() {
   }
   if (state.date !== date) return; // 그 사이 다른 화면으로 나갔음
   state.day = day;
+  state.busy = busy; // 지금 작업 중인 날짜 (다른 날짜일 수 있음)
   renderDay(day);
-  // 작업 중이면 몇 초마다 다시 봅니다.
+  // 작업 중이면 몇 초마다 다시 봅니다. 다른 날짜의 작업이 도는 동안도 끝나면 단추를 풀어야 하니 느리게 봅니다.
   if (jobRunning(day.job)) pollLater(4000);
+  else if (busy && busy !== date) pollLater(8000);
+}
+
+/** 다른 날짜의 작업이 도는 중이면 그 날짜를, 아니면 null. */
+function busyElsewhere() {
+  return state.busy && state.busy !== state.date ? state.busy : null;
 }
 
 function renderDay(day) {
@@ -259,7 +269,7 @@ function renderDay(day) {
     $("draft-msg").textContent = "claude 가 읽고 쓰는 중입니다. 화면을 닫아도 노트북에서 계속됩니다.";
     draftBtn.disabled = true;
   } else {
-    draftBtn.disabled = false;
+    draftBtn.disabled = Boolean(busyElsewhere());
     if (job?.status === "error") {
       setBadge("b-draft", "실패", "bad");
       $("draft-msg").textContent = job.error ?? "";
@@ -317,6 +327,78 @@ async function saveConversation() {
 
 const STEP_ICON = { wait: "○", run: "◐", ok: "●", skip: "–", fail: "✕", hold: "■" };
 
+function renderSteps(ol, job, big) {
+  ol.innerHTML = "";
+  if (job?.mode !== "publish" || !Array.isArray(job.steps)) return;
+  for (const st of job.steps) {
+    const li = document.createElement("li");
+    li.className = st.status;
+    const icon = STEP_ICON[st.status] ?? "○";
+    const detail = st.detail ? `<span class="d">${escapeHtml(st.detail)}</span>` : "";
+    li.innerHTML = big
+      ? `<span class="i">${icon}</span><span class="t">${escapeHtml(st.label)}${detail}</span>`
+      : `${icon} ${escapeHtml(st.label)}` + (detail ? `<br>${detail}` : "");
+    ol.appendChild(li);
+  }
+}
+
+/** 기초자료로 발행이 도는 동안 화면을 덮는 진행 창. 끝나면 결과를 보여 주고, 닫기를 누를 때까지 남습니다. */
+function renderAutoModal(job) {
+  const modal = $("auto-modal");
+  if (job?.mode !== "publish") {
+    modal.hidden = true;
+    return;
+  }
+  // 작업마다 startedAt 이 다르므로 그것으로 '이 작업의 창을 닫았는지'를 기억합니다.
+  const key = job.startedAt ?? "";
+  const running = jobRunning(job);
+  if (running && state.autoModalDismissed !== key) state.autoModal = key;
+  if (state.autoModal !== key) {
+    modal.hidden = true;
+    return;
+  }
+  const title = $("auto-modal-title");
+  const msg = $("auto-modal-msg");
+  renderSteps($("auto-modal-steps"), job, true);
+  $("auto-modal-back").hidden = !running;
+  $("auto-modal-close").textContent = running ? "창 닫기 (작업은 계속)" : "닫기";
+  if (running) {
+    title.textContent = job.status === "queued" ? "기초자료로 발행을 기다리는 중" : "기초자료로 발행하는 중";
+    title.className = "running";
+    $("auto-modal-sub").hidden = false;
+    msg.textContent = "";
+  } else {
+    $("auto-modal-sub").hidden = true;
+    if (job.status === "hold") {
+      title.textContent = "멈춤 · 확인이 필요합니다";
+      title.className = "warn";
+      msg.textContent = job.holdReason ?? "";
+    } else if (job.status === "error") {
+      title.textContent = "발행하지 못했습니다";
+      title.className = "bad";
+      msg.textContent = job.error ?? "";
+    } else if (job.status === "done" && job.publish?.pushed) {
+      title.textContent = "발행했습니다";
+      title.className = "ok";
+      msg.innerHTML = `커밋 <code>${escapeHtml(job.publish.commit)}</code> · 몇 분 뒤 <a href="${job.publish.url}" target="_blank" rel="noopener">웹사이트의 이 날</a>에 실립니다.`;
+    } else if (job.status === "done") {
+      title.textContent = job.publish ? "커밋만 됐습니다" : "content.md 까지 만들었습니다";
+      title.className = "warn";
+      msg.textContent = job.publish ? `push 가 안 됐습니다: ${job.publish.pushError ?? ""}` : "발행 전에 멈추기를 골라 두었습니다. 4단계에서 보고 5단계로 발행하세요.";
+    } else {
+      modal.hidden = true;
+      return;
+    }
+  }
+  modal.hidden = false;
+}
+
+function closeAutoModal() {
+  state.autoModalDismissed = state.autoModal;
+  state.autoModal = null;
+  $("auto-modal").hidden = true;
+}
+
 function renderAuto(day) {
   const job = day.job;
   const ready = $("ready");
@@ -328,26 +410,23 @@ function renderAuto(day) {
   ];
   ready.innerHTML = items.map(([ok, text]) => `<li class="${ok ? "ok" : "no"}">${escapeHtml(text)}</li>`).join("");
 
-  const running = job && (job.status === "running" || job.status === "queued");
-  const canRun = (day.hasConversation || day.notes.length) && !running && !state.chatting;
+  const running = jobRunning(job);
+  const elsewhere = busyElsewhere();
+  const canRun = (day.hasConversation || day.notes.length) && !running && !state.chatting && !elsewhere;
   $("btn-run").disabled = !canRun;
+  $("stop-before-publish").disabled = Boolean(running);
   if (document.activeElement !== $("stop-before-publish") && job?.stopBeforePublish != null && !running) {
     $("stop-before-publish").checked = Boolean(job.stopBeforePublish);
   }
 
-  const steps = $("steps");
-  steps.innerHTML = "";
-  if (job?.mode === "publish" && Array.isArray(job.steps)) {
-    for (const st of job.steps) {
-      const li = document.createElement("li");
-      li.className = st.status;
-      li.innerHTML = `${STEP_ICON[st.status] ?? "○"} ${escapeHtml(st.label)}` + (st.detail ? `<br><span class="d">${escapeHtml(st.detail)}</span>` : "");
-      steps.appendChild(li);
-    }
-  }
+  renderSteps($("steps"), job, false);
+  renderAutoModal(job);
 
   const msg = $("auto-msg");
-  if (!job || job.mode !== "publish") {
+  if (elsewhere && !running) {
+    setBadge("b-auto", `${elsewhere} 작업 중`, "warn");
+    msg.textContent = `${elsewhere} 의 작업이 진행 중입니다. 노트북의 claude 는 한 번에 하나만 돌리므로 끝난 뒤 시작할 수 있습니다.`;
+  } else if (!job || job.mode !== "publish") {
     setBadge("b-auto", running ? "초안 작업 중" : "", running ? "warn" : "");
     msg.textContent = "";
   } else if (running) {
@@ -380,7 +459,8 @@ async function runAuto() {
   busy($("btn-run"), true);
   try {
     await api(`/api/days/${state.date}/run`, { method: "POST", body: { instructions: $("instructions").value, stopBeforePublish: stop } });
-    toast("시작했습니다. 몇 분 걸립니다.");
+    state.autoModal = null;
+    state.autoModalDismissed = null;
     await refreshDay();
   } catch (e) {
     toast(e.message, 6000);
@@ -887,6 +967,7 @@ function wire() {
   });
   $("btn-back").addEventListener("click", () => {
     clearTimeout(state.poll);
+    closeAutoModal();
     state.date = null;
     $("title").innerHTML = "신앙의 이정표 <small>도우미</small>";
     show("view-days");
@@ -917,6 +998,8 @@ function wire() {
   $("file-public").addEventListener("change", (e) => uploadPhotos(e.target.files, "public").then(() => (e.target.value = "")));
   $("btn-draft").addEventListener("click", makeDraft);
   $("btn-run").addEventListener("click", runAuto);
+  $("auto-modal-close").addEventListener("click", closeAutoModal);
+  $("auto-modal-back").addEventListener("click", () => $("btn-back").click());
   $("btn-apply").addEventListener("click", applyDraft);
   $("btn-save-content").addEventListener("click", saveContent);
   $("btn-preview").addEventListener("click", makePreview);

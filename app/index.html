@@ -185,6 +185,20 @@
     </section>
   </main>
 
+  <!-- 기초자료로 발행이 도는 동안 화면을 덮는 진행 창 -->
+  <div class="modal" id="auto-modal" hidden>
+    <div class="modal-card">
+      <h2 id="auto-modal-title">기초자료로 발행하는 중</h2>
+      <p class="hint" id="auto-modal-sub">노트북이 이어서 합니다. 화면을 닫거나 목록으로 나가도 작업은 계속됩니다.</p>
+      <ol class="steps big" id="auto-modal-steps"></ol>
+      <p id="auto-modal-msg"></p>
+      <div class="row">
+        <button class="primary" id="auto-modal-close">닫기</button>
+        <button id="auto-modal-back" hidden>목록으로</button>
+      </div>
+    </div>
+  </div>
+
   <div class="toast" id="toast" hidden></div>
   <script src="app.js"></script>
 </body>

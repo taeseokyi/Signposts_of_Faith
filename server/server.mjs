@@ -66,7 +66,12 @@ const runner = new ClaudeRunner({
 // ---------- 초안 작업 큐 (한 번에 하나) ----------
 
 const queue = [];
-let working = false;
+let working = null; // 지금 작업 중인 날짜 (없으면 null)
+
+/** 작업 중이거나 기다리는 날짜 가운데 첫째. 다른 날짜의 작업을 겹쳐 시작하지 않게 할 때 씁니다. */
+function busyDate() {
+  return working ?? queue[0] ?? null;
+}
 
 function enqueue(date) {
   if (!queue.includes(date)) queue.push(date);
@@ -77,7 +82,7 @@ async function drain() {
   if (working) return;
   const date = queue.shift();
   if (!date) return;
-  working = true;
+  working = date;
   try {
     await runJob(date);
   } catch (error) {
@@ -86,7 +91,7 @@ async function drain() {
     const steps = (job.steps ?? []).map((st) => (st.status === "run" ? { ...st, status: "fail", detail: error.message } : st));
     await days.saveJob(date, { ...job, steps, status: "error", error: error.message, finishedAt: new Date().toISOString() }).catch(() => {});
   } finally {
-    working = false;
+    working = null;
     drain();
   }
 }
@@ -628,7 +633,7 @@ const handler = async (req, res) => {
     }
 
     if (req.method === "GET" && path === "/api/days") {
-      send(res, 200, { days: await days.list(), working, queue: [...queue] });
+      send(res, 200, { days: await days.list(), working: Boolean(working), busy: busyDate(), queue: [...queue] });
       return;
     }
 
@@ -665,7 +670,7 @@ const handler = async (req, res) => {
     }
 
     if (!part && req.method === "GET") {
-      send(res, 200, { day: await days.detail(date) });
+      send(res, 200, { day: await days.detail(date), busy: busyDate() });
       return;
     }
 
@@ -764,6 +769,12 @@ const handler = async (req, res) => {
       const current = await days.job(date);
       if (current && (current.status === "queued" || current.status === "running")) {
         send(res, 409, { error: "이미 작업 중입니다." });
+        return;
+      }
+      // 노트북의 claude 는 한 번에 하나만 돌립니다. 다른 날짜의 작업이 도는 동안은 겹쳐 시작하지 않습니다.
+      const other = busyDate();
+      if (other && other !== date) {
+        send(res, 409, { error: `${other} 의 작업이 진행 중입니다. 끝난 뒤 시작하세요.` });
         return;
       }
       if (chatting.has(date)) {
