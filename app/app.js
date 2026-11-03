@@ -292,6 +292,8 @@ async function openDay(date) {
   $("photo-msg").textContent = "";
   $("chat-msg").textContent = "";
   $("title").innerHTML = `${date.length > 10 ? `${date.slice(0, 10)} <small>(${date.slice(11)})</small>` : date} <small>신앙의 이정표</small>`;
+  // 주소에 날짜를 남겨, 폰이 화면을 다시 불러와도(앱 갱신, 탭 복귀) 같은 날짜와 진행 창으로 돌아온다
+  if (location.hash !== `#${date}`) history.replaceState(null, "", `#${date}`);
   show("view-day");
   await refreshDay();
 }
@@ -1277,6 +1279,7 @@ function wire() {
     clearTimeout(state.poll);
     closeAutoModal();
     state.date = null;
+    if (location.hash) history.replaceState(null, "", location.pathname + location.search);
     $("title").innerHTML = "신앙의 이정표 <small>도우미</small>";
     show("view-days");
     loadDays().catch((e) => toast(e.message));
@@ -1341,7 +1344,7 @@ async function main() {
   }
   show("view-days");
   if (await connect()) {
-    const back = /^#(\d{4}-\d{2}-\d{2})$/.exec(location.hash);
+    const back = /^#(\d{4}-\d{2}-\d{2}(?:-\d+)?)$/.exec(location.hash); // 같은 날 둘째 글(-2)도 돌아온다
     if (back) openDay(back[1]).catch((e) => toast(e.message));
     else loadDays().catch((e) => toast(e.message));
     watchJobs();
