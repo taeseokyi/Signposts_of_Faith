@@ -308,7 +308,7 @@ function renderAuto(day) {
     [day.hasConversation, day.chatTurns ? `대화 (물음 ${day.chatTurns}개)` : day.hasConversation ? "대화 (붙여 넣음)" : "대화 없음 — 노트만으로 물음을 세웁니다"],
     [day.notes.length > 0, day.notes.length ? `노트 사진 원본 ${day.notes.length}장` : "노트 사진 없음"],
     [day.publicPhotos.length > 0, day.publicPhotos.length ? `공개용 ${day.publicPhotos.length}장 (있으면 자르기 단계는 건너뜀)` : "공개용 사진은 발행할 때 자릅니다"],
-    [day.hasContent, day.hasContent ? "content.md 있음 (초안으로 덮어쓰고 사본을 남깁니다)" : "content.md 아직 없음"],
+    [day.hasContent, day.hasContent ? "content.md 있음 — 다시 누르면 초안을 새로 써서 덮어씁니다 (손으로 고친 것은 사본에만 남음). 고친 글을 다시 올리려면 4단계에서 저장하고 5단계로 발행하세요" : "content.md 아직 없음"],
   ];
   ready.innerHTML = items.map(([ok, text]) => `<li class="${ok ? "ok" : "no"}">${escapeHtml(text)}</li>`).join("");
 
@@ -359,7 +359,8 @@ async function runAuto() {
   if (!state.day) return;
   const stop = $("stop-before-publish").checked;
   const what = stop ? "사진 자르기 → 초안 → content.md 까지 만들고 발행 앞에서 멈춥니다." : "사진 자르기 → 초안 → content.md → 커밋과 push 까지 한 번에 합니다. 공개 저장소이고 웹사이트에 바로 실립니다.";
-  if (!confirm(`${state.date}: ${what} 시작할까요?`)) return;
+  const again = state.day.hasContent ? "\n\n이미 content.md 가 있는 날입니다. 초안을 새로 써서 덮어쓰며, 손으로 고친 내용은 사본에만 남습니다. 고친 글을 그대로 올리려면 취소하고 5단계 발행을 쓰세요." : "";
+  if (!confirm(`${state.date}: ${what}${again}\n\n시작할까요?`)) return;
   busy($("btn-run"), true);
   try {
     await api(`/api/days/${state.date}/run`, { method: "POST", body: { instructions: $("instructions").value, stopBeforePublish: stop } });

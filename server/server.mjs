@@ -407,10 +407,12 @@ async function publish(date, { message, push = true, withRecord = true } = {}) {
     pullError = e.message;
   }
   const subtitle = subtitleOf(await readFile(days.contentPath(date), "utf8")) ?? "";
-  const files = [`${date}/content.md`, ...(await days.publicPhotos(date)).map((n) => `${date}/${n}`)];
+  // 날짜 폴더를 통째로 담습니다 (-A 라서 지운 공개용 사진의 삭제도 들어갑니다).
+  // 대화.md, 노트/, 빌드 결과(board.html, PDF)는 .gitignore 에 있어 들어가지 않습니다.
+  const files = [`${date}/`];
   if (withRecord && (await appendRecord(date))) files.push("WORKFLOW.md");
 
-  await git(["add", "--", ...files], { cwd: REPO });
+  await git(["add", "-A", "--", ...files], { cwd: REPO });
   const staged = (await git(["diff", "--cached", "--name-only"], { cwd: REPO })).trim();
   if (!staged) {
     const err = new Error("바뀐 것이 없어 커밋하지 않습니다. (이미 발행됐거나 내용이 같습니다)");

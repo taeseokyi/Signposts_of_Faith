@@ -44,7 +44,7 @@
 4. **초안 만들기** — `claude -p` 가 `WORKFLOW.md`, `template/content_template.md`, 가장 최근 `content.md` 본보기, 대화, 사진을 Read 로 읽고 JSON 스키마로 `content.md` 전문·8장 기록 블록·확인할 점을 냅니다. 서버가 `python template/build.py check` 로 검사해 [오류]가 있으면 그 목록을 붙여 최대 3번까지 다시 시킵니다.
 5. **content.md 로 올리기 → 다듬기** — 화면에서 고치고 저장할 때마다 검사합니다. 사실 확인(전례일·장절·교리서 항·인용)은 사람이 합니다.
 6. **미리보기** — `python template/build.py site --no-pdf` 로 `server/data/_site/` 를 만들어 `/preview/` 에 띄웁니다.
-7. **발행** — 원격이 앞서 있으면 먼저 `git pull --ff-only` 로 받고, `content.md`, 공개용 사진, WORKFLOW.md 8장 기록(초안의 블록을 `### (다음 기록은 여기에 이어서)` 앞에 끼움)을 `git add` → `commit "YYYY-MM-DD 묵상: 부제"` → `push`. push 가 막히면 커밋만 남기고 알려 줍니다.
+7. **발행** — 원격이 앞서 있으면 먼저 `git pull --ff-only` 로 받고, 날짜 폴더 전체(`git add -A` 라서 지운 공개용 사진의 삭제도 포함. `대화.md`, `노트/` 는 .gitignore)와 WORKFLOW.md 8장 기록(초안의 블록을 `### (다음 기록은 여기에 이어서)` 앞에 끼움)을 `commit "YYYY-MM-DD 묵상: 부제"` → `push`. push 가 막히면 커밋만 남기고 알려 줍니다. 이미 발행한 날을 다시 발행하면 새 커밋이 하나 더 생기고 사이트의 그 날짜 페이지가 바뀝니다 (바뀐 것이 없으면 커밋하지 않음). 8장 기록은 다시 붙지 않습니다.
 
 claude CLI 에는 Read 도구만 줍니다. 저장소를 고치는 것은 서버이고, 커밋과 push 는 화면에서 **발행**을 눌렀을 때만 합니다.
 
