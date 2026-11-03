@@ -160,18 +160,21 @@ Start-ScheduledTask    -TaskPath '\tsyi\' -TaskName 'Signposts helper'
 |---|---|---|
 | GET | `/api/health` | 연결·토큰 확인 (토큰 없이 가능) |
 | POST | `/api/login` | `{token}` → 쿠키. `<img>` 와 미리보기 페이지용 |
+| GET | `/api/bible/books` | 성경 책 목록 (약칭, 이름, 구약·신약) — 말씀 더하기의 책 고르기 |
 | GET | `/api/days` | 날짜 폴더 목록과 상태 |
 | POST | `/api/days` | `{date}` 새 날짜 폴더 |
 | GET | `/api/days/:date` | 대화(`chat`), 사진 판독(`scrap`), 사진 목록, content.md, 초안, 기록, 작업 상태 |
-| POST | `/api/days/:date/chat` | `{text}` 한 턴. NDJSON 스트림: `{delta}`… `{status}`… `{done, text, costUsd, chatTurns}` 또는 `{error}` |
+| POST | `/api/days/:date/chat` | `{text}` 한 턴. NDJSON 스트림: `{delta}`… `{status}`… `{done, text, costUsd, chatTurns}` 또는 `{error}`. 지난 세션을 잇지 못하면 앞 대화를 이어 붙여 새 세션으로 잇는다 |
 | GET / DELETE | `/api/days/:date/chat` | 대화 보기 / 모두 지우기 (`chat.json` 과 `대화.md`) |
-| GET | `/api/days/:date/readings` | 굿뉴스 매일미사에서 그날 말씀 (`?refresh=1` 이면 다시 가져옴) |
+| GET | `/api/days/:date/readings` | 굿뉴스 매일미사에서 그날 말씀 (`?refresh=1` 이면 다시 가져옴. 더한 말씀 `extra` 는 남김) |
+| POST | `/api/days/:date/readings/extra` | `{ref:"요한 15,5-8"}` 굿뉴스 성경에서 구절을 가져와 그날 말씀에 더함 (`bible.mjs`) → `{readings, added}` |
+| DELETE | `/api/days/:date/readings/extra/:ref` | 더한 구절 빼기 |
 | PUT | `/api/days/:date/conversation` | `{text}` → `대화.md` 붙여 넣기 (비우면 지움) |
 | POST | `/api/days/:date/scrap` | `{photos?:[이름]}` 노트 사진에서 이 날짜 부분 찾기 → `{scrap}` |
 | POST | `/api/days/:date/photos` | `{photos:[{kind:"note"|"public", mediaType, base64}]}` |
 | GET / DELETE | `/api/days/:date/photos/:name` | 사진 보기 / 지우기 |
-| POST | `/api/days/:date/run` | `{instructions?, stopBeforePublish?}` 한 번에 발행 작업 등록. 진행은 `GET /api/days/:date` 의 `job.steps` |
-| POST | `/api/days/:date/draft` | `{instructions}` 초안만 (한 번에 하나씩) |
+| POST | `/api/days/:date/run` | `{instructions?, stopBeforePublish?, extend?}` 한 번에 발행 작업 등록. 진행은 `GET /api/days/:date` 의 `job.steps`. `extend` 는 추가 모드(있는 content.md 에 새 물음·노트·구절만 덧붙임, 글이 없으면 무시) |
+| POST | `/api/days/:date/draft` | `{instructions, extend?}` 초안만 (한 번에 하나씩) |
 | POST | `/api/days/:date/draft/apply` | 초안을 `content.md` 로 (있던 것은 `server/data/` 에 사본) |
 | PUT | `/api/days/:date/content` | `{text}` 저장하고 검사 |
 | GET | `/api/days/:date/check` | `content.md` 검사 결과 |

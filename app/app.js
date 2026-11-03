@@ -285,6 +285,8 @@ async function openDay(date) {
   state.autoModal = null;
   state.autoModalDismissed = null;
   state.readingsAsked = false;
+  state.extendTouched = false;
+  loadBooks().catch(() => {});
   closeCrop();
   $("photo-msg").textContent = "";
   $("chat-msg").textContent = "";
@@ -387,8 +389,9 @@ function renderDay(day) {
       $("draft-msg").textContent = job.error ?? "";
     } else if (job?.status === "done" || job?.status === "hold") {
       const errors = (job.problems ?? []).filter(([l]) => l === "오류").length;
-      setBadge("b-draft", errors ? `초안 (오류 ${errors})` : "초안 완료", errors ? "warn" : "ok");
-      $("draft-msg").textContent = (job.title ? `제목: ${job.title}` : "") + (job.costUsd ? ` · 약 $${job.costUsd.toFixed(2)}` : "");
+      setBadge("b-draft", errors ? `초안 (오류 ${errors})` : job.extend ? "덧붙인 초안" : "초안 완료", errors ? "warn" : "ok");
+      const grew = job.extend && job.extendFrom != null && day.draftMilestones != null ? `이정표 ${job.extendFrom}개 → ${day.draftMilestones}개` : "";
+      $("draft-msg").textContent = [job.title ? `제목: ${job.title}` : "", grew, job.costUsd ? `약 $${job.costUsd.toFixed(2)}` : ""].filter(Boolean).join(" · ");
     } else {
       setBadge("b-draft", "아직", "");
       $("draft-msg").textContent = "";
@@ -511,14 +514,43 @@ function closeAutoModal() {
   $("auto-modal").hidden = true;
 }
 
+/** 추가 모드 체크박스 (한 번에 발행과 3단계에 하나씩, 같은 값). 글이 있는 날은 기본으로 켜 둔다. */
+function renderExtend(day) {
+  const job = day.job;
+  const running = jobRunning(job);
+  for (const id of ["extend-auto-label", "extend-draft-label"]) $(id).hidden = !day.hasContent;
+  // 글이 있는 날은 켜 둔다 (덮어쓰기보다 덧붙이기가 안전). 작업이 도는 동안은 그 작업의 값을 보인다.
+  if (running) setExtend(Boolean(job.extend));
+  else if (!state.extendTouched) setExtend(Boolean(day.hasContent));
+  $("extend-auto").disabled = running;
+  $("extend-draft").disabled = running;
+}
+
+function extendChecked() {
+  return Boolean(state.day?.hasContent) && $("extend-auto").checked;
+}
+
+function setExtend(value) {
+  $("extend-auto").checked = value;
+  $("extend-draft").checked = value;
+}
+
 function renderAuto(day) {
   const job = day.job;
+  renderExtend(day);
+  const extend = extendChecked();
   const ready = $("ready");
   const items = [
     [day.hasConversation, day.chatTurns ? "대화 있음" : day.hasConversation ? "대화 (붙여 넣음)" : "대화 없음 — 노트만으로 물음을 세웁니다"],
     [day.notes.length > 0, day.notes.length ? `노트 사진 원본 ${day.notes.length}장` : "노트 사진 없음"],
     [day.publicPhotos.length > 0, day.publicPhotos.length ? `공개용 ${day.publicPhotos.length}장 (있으면 자르기 단계는 건너뜀)` : "공개용 사진은 발행할 때 자릅니다"],
-    [day.hasContent, day.hasContent ? "content.md 있음 — 다시 누르면 초안을 새로 써서 덮어씁니다 (손으로 고친 것은 사본에만 남음). 고친 글을 다시 올리려면 4단계에서 저장하고 5단계로 발행하세요" : "content.md 아직 없음"],
+    ...(freshNotes(day).length ? [[true, `새로 올린 노트 사진 ${freshNotes(day).length}장 — 발행할 때 이 날짜 부분을 찾아 공개용으로 더합니다`]] : []),
+    ...(day.readings?.extra?.length ? [[true, `더한 말씀 ${day.readings.extra.map((x) => x.ref).join(", ")} — 덧붙이기 때 여는 말씀에 들어갑니다`]] : []),
+    [day.hasContent, !day.hasContent
+      ? "content.md 아직 없음"
+      : extend
+        ? `content.md 있음 (이정표 ${day.milestones ?? 0}개) — 덧붙이기: 있는 글은 그대로 두고, 대화의 새 물음과 노트의 새 내용만 여는 말씀·이정표·흐름·한 줄·다시 펼쳐 볼 물음·근거에 더합니다`
+        : "content.md 있음 — 덧붙이기를 끄면 초안을 새로 써서 덮어씁니다 (손으로 고친 것은 사본에만 남음). 고친 글을 다시 올리려면 4단계에서 저장하고 5단계로 발행하세요"],
   ];
   ready.innerHTML = items.map(([ok, text]) => `<li class="${ok ? "ok" : "no"}">${escapeHtml(text)}</li>`).join("");
 
@@ -565,13 +597,18 @@ function renderAuto(day) {
 async function runAuto() {
   if (!state.day) return;
   const stop = $("stop-before-publish").checked;
+  const extend = extendChecked();
   const what = stop ? "사진 자르기 → 초안 → content.md 까지 만들고 발행 앞에서 멈춥니다." : "사진 자르기 → 초안 → content.md → 커밋과 push 까지 한 번에 합니다. 공개 저장소이고 웹사이트에 바로 실립니다.";
-  const again = state.day.hasContent ? "\n\n이미 content.md 가 있는 날입니다. 초안을 새로 써서 덮어쓰며, 손으로 고친 내용은 사본에만 남습니다. 고친 글을 그대로 올리려면 취소하고 5단계 발행을 쓰세요." : "";
+  const again = !state.day.hasContent
+    ? ""
+    : extend
+      ? `\n\n있는 글(이정표 ${state.day.milestones ?? 0}개)은 그대로 두고 새 물음·노트만 덧붙입니다.`
+      : "\n\n이미 content.md 가 있는 날입니다. 초안을 새로 써서 덮어쓰며, 손으로 고친 내용은 사본에만 남습니다. 고친 글을 그대로 올리려면 취소하고 5단계 발행을 쓰세요.";
   if (!confirm(`${state.date}: ${what}${again}\n\n시작할까요?`)) return;
   askNotifyPermission();
   busy($("btn-run"), true);
   try {
-    await api(`/api/days/${state.date}/run`, { method: "POST", body: { instructions: $("instructions").value, stopBeforePublish: stop } });
+    await api(`/api/days/${state.date}/run`, { method: "POST", body: { instructions: $("instructions").value, stopBeforePublish: stop, extend } });
     state.autoModal = null;
     state.autoModalDismissed = null;
     await refreshDay();
@@ -682,6 +719,87 @@ function renderReadings(r) {
       `</summary><div class="text">${escapeHtml(x.text)}</div>`;
     list.appendChild(d);
   }
+  // 묵상하다 떠올라 더한 구절. 대화와 초안에도 "더한 말씀"으로 들어갑니다.
+  for (const x of r.extra ?? []) {
+    const d = document.createElement("details");
+    d.className = "extra";
+    d.innerHTML =
+      `<summary>더한 말씀 <span class="ref">${escapeHtml(x.ref)}</span>` +
+      (x.bookName ? ` <span class="heading">— ${escapeHtml(x.bookName)}</span>` : "") +
+      `<button class="remove" title="이 구절 빼기">빼기</button></summary><div class="text">${escapeHtml(x.text)}</div>`;
+    d.querySelector(".remove").addEventListener("click", (e) => {
+      e.preventDefault();
+      removeExtra(x.ref).catch((err) => toast(err.message));
+    });
+    list.appendChild(d);
+  }
+}
+
+/** 책 고르기 목록을 서버에서 한 번 받아 채웁니다 (구약·신약 묶음). */
+async function loadBooks() {
+  const sel = $("extra-book");
+  if (sel.options.length > 1) return;
+  try {
+    const { books } = await api("/api/bible/books");
+    for (const testament of ["구약", "신약"]) {
+      const g = document.createElement("optgroup");
+      g.label = testament;
+      for (const b of books.filter((x) => x.testament === testament)) {
+        const o = document.createElement("option");
+        o.value = b.abbr;
+        o.textContent = b.name;
+        g.appendChild(o);
+      }
+      sel.appendChild(g);
+    }
+  } catch {
+    // 목록이 없어도 오른쪽 칸에 책 이름까지 적으면 됩니다
+  }
+}
+
+/** 책을 고르고 장절을 적어(또는 책 이름까지 적어) 굿뉴스 성경에서 가져와 그날 말씀에 더합니다. */
+async function addExtra() {
+  const input = $("extra-ref");
+  const book = $("extra-book").value;
+  const typed = input.value.trim();
+  if (!typed) {
+    input.focus();
+    return;
+  }
+  // 책을 골랐고 장절만 적었으면 붙입니다. 책 이름까지 적었으면(한글로 시작) 그대로 보냅니다.
+  const ref = book && /^\d/.test(typed) ? `${book} ${typed}` : typed;
+  const date = state.date;
+  busy($("btn-extra"), true);
+  $("readings-msg").textContent = "굿뉴스 성경에서 가져오는 중…";
+  try {
+    const { readings, added } = await api(`/api/days/${date}/readings/extra`, { method: "POST", body: { ref }, timeoutMs: 40000 });
+    if (state.date !== date) return;
+    if (state.day) state.day.readings = readings;
+    renderReadings(readings);
+    input.value = "";
+    $("readings-msg").textContent = "";
+    toast(`${added} 을(를) 더했습니다. 대화에서 바로 물어도 되고, 덧붙이기 발행 때 여는 말씀에 들어갑니다.`, 5000);
+  } catch (e) {
+    if (state.date !== date) return;
+    $("readings-msg").textContent = e.message;
+  } finally {
+    busy($("btn-extra"), false);
+  }
+}
+
+async function removeExtra(ref) {
+  const date = state.date;
+  const { readings } = await api(`/api/days/${date}/readings/extra/${encodeURIComponent(ref)}`, { method: "DELETE" });
+  if (state.date !== date) return;
+  if (state.day) state.day.readings = readings;
+  renderReadings(readings);
+}
+
+/** 공개용 사진을 만든 뒤에 새로 올린 원본 (이 날짜 부분을 아직 찾지 않은 것). 서버의 freshNotes 와 같은 기준. */
+function freshNotes(day) {
+  const seen = day.scrap?.photos ?? [];
+  if (!day.publicPhotos.length || !seen.length) return [];
+  return day.notes.filter((n) => !seen.some((p) => p.file === n));
 }
 
 /** 서버에 그날 말씀을 청합니다 (한 번 가져오면 서버가 간직하고, refresh 면 다시 가져옵니다). */
@@ -996,8 +1114,9 @@ async function makeDraft() {
   askNotifyPermission();
   busy($("btn-draft"), true);
   try {
-    await api(`/api/days/${state.date}/draft`, { method: "POST", body: { instructions: $("instructions").value } });
-    toast("초안을 만들기 시작했습니다.");
+    const extend = extendChecked();
+    await api(`/api/days/${state.date}/draft`, { method: "POST", body: { instructions: $("instructions").value, extend } });
+    toast(extend ? "있는 글에 덧붙이기 시작했습니다." : "초안을 만들기 시작했습니다.");
     await refreshDay();
     watchJobs();
   } catch (e) {
@@ -1007,7 +1126,8 @@ async function makeDraft() {
 }
 
 async function applyDraft() {
-  if (state.day?.hasContent && !confirm("이미 content.md 가 있습니다. 사본을 남기고 초안으로 덮어쓸까요?")) return;
+  const q = state.day?.job?.extend ? "있는 글에 덧붙인 초안입니다. 앞 글은 사본으로 남기고 이것으로 바꿀까요?" : "이미 content.md 가 있습니다. 사본을 남기고 초안으로 덮어쓸까요?";
+  if (state.day?.hasContent && !confirm(q)) return;
   busy($("btn-apply"), true);
   try {
     const r = await api(`/api/days/${state.date}/draft/apply`, { method: "POST", body: {} });
@@ -1143,6 +1263,20 @@ function wire() {
   $("file-public").addEventListener("change", (e) => uploadPhotos(e.target.files, "public").then(() => (e.target.value = "")));
   $("btn-draft").addEventListener("click", makeDraft);
   $("btn-run").addEventListener("click", runAuto);
+  $("btn-extra").addEventListener("click", addExtra);
+  $("extra-ref").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      addExtra();
+    }
+  });
+  for (const id of ["extend-auto", "extend-draft"]) {
+    $(id).addEventListener("change", (e) => {
+      state.extendTouched = true;
+      setExtend(e.target.checked);
+      if (state.day) renderAuto(state.day);
+    });
+  }
   $("auto-modal-close").addEventListener("click", closeAutoModal);
   $("auto-modal-back").addEventListener("click", () => $("btn-back").click());
   $("btn-apply").addEventListener("click", applyDraft);

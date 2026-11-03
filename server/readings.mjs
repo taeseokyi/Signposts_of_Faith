@@ -106,14 +106,16 @@ export function readingsSummary(r) {
   const parts = [];
   if (r.title) parts.push(r.title);
   for (const x of r.readings) parts.push(`${x.kind} ${x.ref}`);
+  for (const x of r.extra ?? []) parts.push(`더한 말씀 ${x.ref}`);
   return parts.join(" · ");
 }
 
-/** 대화 첫 마디와 대화.md 에 넣을 말씀 본문 블록. */
+/** 대화 첫 마디와 대화.md 에 넣을 말씀 본문 블록. 사용자가 더한 구절(extra)도 뒤에 붙습니다. */
 export function readingsBlock(r) {
   if (!r) return "";
   const parts = [];
   if (r.title) parts.push(`전례일: ${r.title}`);
   for (const x of r.readings) parts.push(`${x.kind} (${x.ref})\n${x.text}`);
+  for (const x of r.extra ?? []) parts.push(`더한 말씀 (${x.ref}) — 묵상하다 떠올라 사용자가 더한 구절\n${x.text}`);
   return parts.join("\n\n");
 }

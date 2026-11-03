@@ -46,6 +46,7 @@ function list(items) {
  * @param {string} o.recordExample   8장 기록의 본보기 블록
  * @param {object|null} o.retry      {problems: string[], draft: string} 이전 초안의 검사 결과
  * @param {object|null} o.readings   굿뉴스에서 가져온 그날의 말씀 (없으면 null)
+ * @param {object|null} o.extend     추가 모드. {milestones: number} 이미 있는 content.md 의 이정표 수. 있으면 그 글을 바탕으로 덧붙인다
  */
 export function buildDraftPrompt({
   date,
@@ -57,18 +58,21 @@ export function buildDraftPrompt({
   recordExample,
   retry,
   readings = null,
+  extend = null,
 }) {
   const parts = [];
 
   parts.push(`너는 「신앙의 이정표」 작업의 정리 담당이다. ${date} 의 묵상을 WORKFLOW.md 의 기준에 맞춰
 content.md 초안으로 정리한다. 글의 주인은 사용자이고, 노트에 적힌 사용자의 결론이 글의 중심이다.
 너의 설명은 그것을 뒷받침하는 자리에 둔다.
-
+${extend ? extendIntro(date, extend) : ""}
 ## 먼저 읽을 것 (Read 도구)
 
 1. WORKFLOW.md — 2장(대화 원칙), 3장(글의 구성과 분량, "대화가 남아 있지 않은 날"), 5장 "빌드"의 content.md 형식 설명
 2. template/content_template.md — content.md 의 뼈대와 각 칸의 뜻
-${examplePath ? `3. ${examplePath} — 실제로 완성된 content.md 본보기. 문체, 분량, 근거 정리 방식을 따른다` : "3. (본보기가 없다. template/content_template.md 를 따른다)"}
+${extend
+    ? `3. ${date}/content.md — 지금 있는 글. 이 글이 바탕이고 본보기다. 문체와 형식을 그대로 잇는다`
+    : examplePath ? `3. ${examplePath} — 실제로 완성된 content.md 본보기. 문체, 분량, 근거 정리 방식을 따른다` : "3. (본보기가 없다. template/content_template.md 를 따른다)"}
 
 ## 이날의 자료
 
@@ -115,6 +119,16 @@ hold: 이 글을 사람이 보지 않고 바로 발행해도 되는지. 보통�
   - 실명, 본당 이름, 가족 사정 같은 개인 정보가 글에 남았을 수 있다
   - 노트 사진을 거의 읽지 못해 결론을 짐작으로 썼다`);
 
+  if (readings?.extra?.length) {
+    parts.push(`## 사용자가 더한 말씀
+
+묵상하다 떠올라 사용자가 굿뉴스 성경에서 가져온 구절이다. 여는 말씀이나 근거의 "## 성경"에 쓸 수 있다. 절 번호는 글에 넣지 않는다.
+
+${readings.extra.map((x) => `${x.ref}\n${x.text}`).join("\n\n")}`);
+  }
+
+  if (extend) parts.push(extendRules(date, extend));
+
   if (instructions && instructions.trim()) {
     parts.push(`## 사용자의 덧붙인 지시
 
@@ -139,6 +153,36 @@ ${retry.draft}
 지정된 JSON 스키마대로만 답한다. content_md 는 "---" 머리말로 시작하는 content.md 전체 내용이다.`);
 
   return parts.join("\n\n");
+}
+
+function extendIntro(date, extend) {
+  return `
+## 추가 모드
+
+${date} 에는 이미 글(${date}/content.md, 이정표 ${extend.milestones}개)이 있다. 사용자가 그날 묵상을 더 곱씹어
+대화에 물음을 더했거나, 노트를 더 적었거나, 떠오른 구절을 더했다. **있는 글은 그대로 두고, 새로 더해진 것만 덧붙인다.** 처음부터 다시 쓰지 않는다.
+${extend.newPhotos?.length ? `- 새로 올린 노트 사진 (앞 글을 쓴 뒤에 올린 것, 이것이 새 노트다): ${extend.newPhotos.join(", ")}` : "- 새로 올린 노트 사진은 없다."}
+${extend.extra?.length ? `- 사용자가 더한 말씀: ${extend.extra.map((x) => x.ref).join(", ")} — 본문은 아래 "사용자가 더한 말씀" 절에 있다. 여는 말씀에 더할 구절은 여기서 고른다.` : "- 사용자가 더한 말씀은 없다."}
+`;
+}
+
+function extendRules(date, extend) {
+  return `## 추가 모드에서 지켜야 할 것
+
+- 먼저 ${date}/content.md 를 읽고, 대화와 노트에서 **아직 글에 없는 것**만 찾는다. 보통 대화의 앞 물음 ${extend.milestones}개는 이미 이정표로 있고, 그 뒤의 물음이 새 것이다.
+  글에 이미 있는 물음과 같은 내용이면 더하지 않는다.
+- 있는 문장은 손대지 않는다: 머리말(날짜, 전례일, 부제, 장절, 독서, 태그, 공개, 노트사진, 게시번호, 게시주소), 있는 이정표의 물음·본문·기억·한 줄,
+  있는 여는 말씀 구절, 있는 흐름과 결론, 있는 근거 항목. 예외는 둘뿐이다: 취지 문단의 이정표 개수 표현, 그리고 사용자가 지시에서 고치라고 한 것.
+- 덧붙일 수 있는 자리 (새 내용이 있을 때만, 없으면 그 자리는 그대로):
+  - 여는 말씀: 사용자가 더한 말씀이 있으면 그 구절을 더한다. 새 물음이 기대는 구절도 더할 수 있다 (전체 2~5개). 취지 문단의 "세 개의 이정표" 같은 개수 표현은 새 개수에 맞춘다.
+  - 이정표: 새 물음마다 이정표 하나를 **있는 이정표 뒤에** 더한다 (전체 8개 이하). 물음·본문·기억·한 줄을 모두 갖춘다.
+  - 나의 묵상 흐름: 노트에 흐름이 이어졌으면 "흐름:" 줄 뒤에 더하고 결론 문단을 잇는다.
+  - 한 줄로 기억하기: 있는 맺음말은 두고, 새 이정표를 아우르는 문장이 필요하면 한 문장 더한다.
+  - 다시 펼쳐 볼 때의 물음: 새 이정표에 맞는 물음을 하나쯤 더한다 (전체 3~5개).
+  - 근거: 새 이정표의 성경·교회 문헌·교부와 성인·참고 항목을 분류에 맞춰 더한다. "## 참고"에 "YYYY-MM-DD 에 이정표 N개를 더했다"는 식으로 적지 않는다 (날짜는 글에 넣지 않는다).
+- 부제는 그대로 둔다. 새 이정표가 글의 중심을 바꿀 만큼 크면 review 에 "부제를 … 로 바꿀 만하다"고 적고, 글에서는 바꾸지 않는다.
+- review 첫 줄에 무엇을 더했는지 적는다: "더한 이정표: (물음 요약)", "더한 구절: …", "흐름에 더함: …" 처럼.
+- content_md 는 덧붙인 결과의 **전체** 내용이다 (머리말부터 근거까지). record_md 도 더한 이정표까지 넣어 새로 낸다.`;
 }
 
 /** 8장 기록 블록의 본보기. 저장소의 WORKFLOW.md 에서 최근 기록 하나를 떼어 오지 못했을 때 쓴다. */
@@ -193,11 +237,32 @@ export function chatOpening({ readings }) {
   return readings?.readings?.length ? `${head}\n\n${readingsBlock(readings)}\n\n첫 번째 물음:` : head;
 }
 
-export function chatContext({ date, photoPaths, publicPhotos }) {
+export function chatContext({ date, photoPaths, publicPhotos, newExtra = [], article = null }) {
   const lines = [`[도우미 안내 — 사용자에게 보이지 않는 줄] 날짜 ${date}.`];
+  if (article) {
+    lines.push(
+      `이 날의 글 ${date}/content.md 는 이미 있다 (부제 「${article.subtitle ?? ""}」, 이정표 ${article.milestones.length}개: ${article.milestones.join(" / ") || "(없음)"}).` +
+        ` 사용자는 글을 낸 뒤에도 묵상을 더 곱씹으며 물음을 잇는 중이다. 새 물음은 글에 덧붙일 새 이정표가 되므로, 있는 이정표와 겹치면 그렇다고 알려 주고 새로운 면을 찾도록 돕는다. 글이 궁금하면 Read 로 그 파일을 볼 수 있다.`
+    );
+  }
   if (photoPaths.length) lines.push(`사용자가 올린 묵상 노트 사진 원본: ${photoPaths.join(", ")} (Read 도구로 볼 수 있다).`);
   if (publicPhotos.length) lines.push(`공개용으로 잘라 둔 사진: ${publicPhotos.join(", ")}.`);
+  for (const x of newExtra) lines.push(`사용자가 묵상하다 떠오른 구절을 더했다 — ${x.ref}:\n${x.text}\n이 구절은 글의 여는 말씀이나 근거에 쓰일 수 있다.`);
   return lines.join(" ");
+}
+
+/**
+ * 세션을 새로 열 때 앞 대화를 이어 붙이는 글. 지난 세션을 --resume 하지 못할 때(며칠 뒤, 다른 경로의 클론)와
+ * 붙여 넣은 대화만 있는 날의 첫 턴에 씁니다. 너무 길면 뒤쪽(최근)을 남깁니다.
+ * @param {{messages?: {role:string,text:string}[], pasted?: string|null}} o
+ */
+export function chatCatchUp({ messages = [], pasted = null }, limit = 16000) {
+  let body = "";
+  if (messages.length) body = messages.map((m) => `### ${m.role === "user" ? "나" : "Claude"}\n${String(m.text).trim()}`).join("\n\n");
+  else if (pasted) body = String(pasted).trim();
+  if (!body) return "";
+  if (body.length > limit) body = "(앞부분 줄임)\n…" + body.slice(-limit);
+  return `## 지금까지의 대화 (지난 세션을 이어 붙임 — 이 대화의 흐름을 알고 다음 물음에 답한다. 다시 요약하지 않는다)\n\n${body}`;
 }
 
 // ---------- 노트 사진에서 그 날짜 부분 찾기 ----------

@@ -26,9 +26,10 @@ import { dirname, extname, join, normalize, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { timingSafeEqual } from "node:crypto";
 
-import { Days, DAY_RE, subtitleOf } from "./days.mjs";
+import { Days, DAY_RE, subtitleOf, milestoneTitles } from "./days.mjs";
 import { ClaudeRunner } from "./runner.mjs";
-import { buildDraftPrompt, buildScrapPrompt, chatContext, chatSystemPrompt, RECORD_EXAMPLE_FALLBACK, SCRAP_SCHEMA, chatOpening } from "./prompt.mjs";
+import { buildDraftPrompt, buildScrapPrompt, chatContext, chatSystemPrompt, RECORD_EXAMPLE_FALLBACK, SCRAP_SCHEMA, chatOpening, chatCatchUp } from "./prompt.mjs";
+import { fetchPassage, bookList } from "./bible.mjs";
 import { cropPhoto, git, python } from "./exec.mjs";
 import { fetchReadings, readingsSummary } from "./readings.mjs";
 import { prepareTls } from "./tls.mjs";
@@ -134,18 +135,25 @@ const STEP_LABELS = {
   publish: "발행 (commit + push)",
 };
 
-function newSteps(keys) {
-  return keys.map((key) => ({ key, label: STEP_LABELS[key], status: "wait", detail: "" }));
+function newSteps(keys, { extend = false } = {}) {
+  return keys.map((key) => ({ key, label: key === "draft" && extend ? "있는 글에 덧붙이기와 검사" : STEP_LABELS[key], status: "wait", detail: "" }));
 }
 
 async function runJob(date) {
   let job = (await days.job(date)) ?? {};
   const mode = job.mode === "publish" ? "publish" : "draft";
+  // 추가 모드: 있는 content.md 를 바탕으로 새 물음·노트만 덧붙인다. 글이 없으면 보통 모드로.
+  const before = await days.summary(date);
+  const extend = Boolean(job.extend) && before.hasContent;
+  // 아직 보지 않은(이 날짜 부분을 찾지 않은) 원본. 공개용이 있는데 본 적이 없으면 손으로 잘랐던 날이므로 새 것으로 치지 않는다.
+  const newNotes = await freshNotes(date);
   job = await days.saveJob(date, {
     ...job,
     mode,
+    extend,
+    extendFrom: extend ? before.milestones ?? 0 : null,
     status: "running",
-    steps: newSteps(mode === "publish" ? ["photos", "draft", "apply", "publish"] : ["draft"]),
+    steps: newSteps(mode === "publish" ? ["photos", "draft", "apply", "publish"] : ["draft"], { extend }),
     attempts: 0,
     error: null,
     hold: false,
@@ -172,20 +180,22 @@ async function runJob(date) {
     await step("photos", "run");
     const notes = await days.notePhotos(date);
     const pub = await days.publicPhotos(date);
-    if (pub.length) {
+    // 공개용이 이미 있으면, 그 뒤에 새로 올려 아직 보지 않은 원본만 봅니다 (추가 모드에서 노트를 더 적은 경우).
+    const fresh = pub.length ? newNotes : null;
+    if (pub.length && !fresh.length) {
       await step("photos", "skip", `공개용 사진이 이미 있습니다: ${pub.join(", ")}`);
     } else if (!notes.length) {
       await step("photos", "skip", "노트 사진이 없습니다. 사진 없이 갑니다.");
     } else {
       // 같은 사진들을 이미 봤으면 (2단계에서 '이 날짜 부분 찾기'를 눌렀거나 앞서 멈춘 뒤) 다시 보지 않습니다.
       const prev = await days.scrap(date);
-      const same = prev && prev.photos.length === notes.length && notes.every((n) => prev.photos.some((p) => p.file === n));
-      const scrap = same ? prev : await scrapPhotos(date, null);
+      const same = !fresh && prev && prev.photos.length === notes.length && notes.every((n) => prev.photos.some((p) => p.file === n));
+      const scrap = same ? prev : await scrapPhotos(date, fresh);
       if (!same) cost += scrap.costUsd || 0;
       // 공개용 번호는 파일 이름이 아니라 노트를 읽는 순서(order)를 따릅니다. 날짜 표시가 있는 쪽이 먼저.
-      const hits = scrap.photos.filter((p) => p.has_day).sort((a, b) => (a.order || 99) - (b.order || 99));
+      const hits = scrap.photos.filter((p) => p.has_day && (!fresh || fresh.includes(p.file))).sort((a, b) => (a.order || 99) - (b.order || 99));
       if (!hits.length) {
-        await stop("photos", `노트 사진 ${notes.length}장에서 ${date} 의 부분을 찾지 못했습니다. 날짜가 맞는지 확인하세요. (${scrap.summary})`);
+        await stop("photos", `${fresh ? `새 노트 사진 ${fresh.length}장` : `노트 사진 ${notes.length}장`}에서 ${date} 의 부분을 찾지 못했습니다. 날짜가 맞는지 확인하세요. (${scrap.summary})`);
         return;
       }
       const risky = hits.find((p) => p.private);
@@ -202,13 +212,14 @@ async function runJob(date) {
         await rm(tmp, { force: true });
         made.push(`${p.file} → ${name}`);
       }
-      await step("photos", "ok", made.join(", "));
+      await step("photos", "ok", (fresh ? "새 사진 더함: " : "") + made.join(", "));
     }
   }
 
   // 2. 초안 (검사에서 [오류]면 최대 MAX_ATTEMPTS 번)
   await step("draft", "run");
   const notes = await days.notePhotos(date);
+  const readingsNow = await days.readings(date);
   const base = {
     date,
     conversationPath: (await days.summary(date)).hasConversation ? `${date}/대화.md` : null,
@@ -217,7 +228,8 @@ async function runJob(date) {
     examplePath: await days.examplePath(date),
     instructions: job.instructions ?? "",
     recordExample: await recordExample(),
-    readings: await days.readings(date),
+    readings: readingsNow,
+    extend: extend ? { milestones: job.extendFrom ?? 0, newPhotos: newNotes.map((n) => `${date}/노트/${n}`), extra: readingsNow?.extra ?? [] } : null,
   };
   let retry = null;
   let check = null;
@@ -242,7 +254,7 @@ async function runJob(date) {
     job = await days.saveJob(date, { ...job, status: "error", error: `초안에 [오류]가 남았습니다 (${errors.length}개). 4단계에서 직접 고치세요.`, costUsd: cost || null, finishedAt: new Date().toISOString() });
     return;
   }
-  await step("draft", "ok", `${check.title ?? ""} · 이정표 ${check.milestones}개 · 주의 ${check.problems.length}개${draft.review.length ? ` · 확인할 점 ${draft.review.length}개` : ""}`);
+  await step("draft", "ok", `${check.title ?? ""} · 이정표 ${extend ? `${job.extendFrom}개 → ` : ""}${check.milestones}개 · 주의 ${check.problems.length}개${draft.review.length ? ` · 확인할 점 ${draft.review.length}개` : ""}`);
 
   if (mode === "draft") {
     job = await days.saveJob(date, { ...job, status: "done", costUsd: cost || null, finishedAt: new Date().toISOString() });
@@ -258,7 +270,7 @@ async function runJob(date) {
     job = await days.saveJob(date, { ...job, status: "error", error: "content.md 검사에서 [오류]가 났습니다.", problems: final.problems, costUsd: cost || null, finishedAt: new Date().toISOString() });
     return;
   }
-  await step("apply", "ok", "content.md 를 썼습니다 (있던 것은 사본으로 남김)");
+  await step("apply", "ok", extend ? "덧붙인 글을 content.md 로 썼습니다 (앞 글은 사본으로 남김)" : "content.md 를 썼습니다 (있던 것은 사본으로 남김)");
 
   // 4. 발행 — claude 가 hold 를 올렸거나, 발행 전에 멈추라고 했으면 여기서 선다.
   if (draft.hold) {
@@ -272,7 +284,7 @@ async function runJob(date) {
   await step("publish", "run");
   let result;
   try {
-    result = await publish(date, {});
+    result = await publish(date, { message: extend ? `${date} 묵상: 이정표 ${job.extendFrom}개 → ${check.milestones}개` : "" });
   } catch (error) {
     await step("publish", "fail", error.message);
     job = await days.saveJob(date, { ...job, status: "error", error: error.message, costUsd: cost || null, finishedAt: new Date().toISOString() });
@@ -306,17 +318,36 @@ async function chatTurn(date, text, res) {
   const at = new Date().toISOString();
   try {
     const notes = await days.notePhotos(date);
-    const context = chatContext({ date, photoPaths: notes.map((n) => `${date}/노트/${n}`), publicPhotos: await days.publicPhotos(date) });
+    const lastAt = chat.messages.length ? chat.messages[chat.messages.length - 1].at ?? "" : "";
+    const readings = await days.readings(date);
+    const newExtra = chat.messages.length ? (readings?.extra ?? []).filter((x) => (x.addedAt ?? "") > lastAt) : [];
+    // 글이 이미 있는 날(추가 모드)은 그 사실과 있는 이정표를 알려 줍니다. 대화는 그대로 이어집니다.
+    const content = await readFile(days.contentPath(date), "utf8").catch(() => null);
+    const article = content ? { subtitle: subtitleOf(content), milestones: milestoneTitles(content) } : null;
+    const context = chatContext({ date, photoPaths: notes.map((n) => `${date}/노트/${n}`), publicPhotos: await days.publicPhotos(date), newExtra, article });
     // 사진 목록은 턴마다 바뀔 수 있으므로 사용자 말 앞에 붙여 보냅니다. 저장되는 대화에는 들어가지 않습니다.
     // 첫 마디에는 여는 말과 그날 말씀(굿뉴스에서 가져온 것)을 붙입니다. 사용자는 물음만 적습니다. 말씀은 대화.md 첫머리에 따로 남습니다.
-    const opening = chat.messages.length ? "" : `${chatOpening({ readings: await days.readings(date) })}\n\n`;
-    const prompt = `${context}\n\n${opening}${text}`;
-    const r = await runner.stream(prompt, {
-      systemPrompt: chat.sessionId ? undefined : chatSystemPrompt({ date }),
-      resume: chat.sessionId,
-      onDelta: (d) => emit({ delta: d }),
-      onStatus: (s) => emit({ status: s }),
-    });
+    // 붙여 넣은 대화만 있는 날의 첫 턴은 그 대화를 이어 붙여 흐름을 잇습니다.
+    const pasted = chat.messages.length ? null : await readFile(days.conversationPath(date), "utf8").catch(() => null);
+    const opening = chat.messages.length ? "" : `${chatOpening({ readings })}\n\n${pasted ? chatCatchUp({ pasted }) + "\n\n다음 물음:\n" : ""}`;
+    const stream = (prompt, { resume }) =>
+      runner.stream(prompt, {
+        systemPrompt: resume ? undefined : chatSystemPrompt({ date }),
+        resume,
+        onDelta: (d) => emit({ delta: d }),
+        onStatus: (s) => emit({ status: s }),
+      });
+    let r;
+    try {
+      r = await stream(`${context}\n\n${opening}${text}`, { resume: chat.sessionId });
+    } catch (error) {
+      if (!chat.sessionId) throw error;
+      // 지난 세션을 잇지 못하면 (며칠 지남, 다른 경로의 클론) 앞 대화를 이어 붙여 새 세션으로 잇습니다.
+      console.warn(`[${date}] 세션 ${chat.sessionId} 을 잇지 못해 새로 엽니다: ${error.message.split("\n")[0]}`);
+      emit({ status: "지난 세션을 잇지 못해 앞 대화를 이어 붙여 새로 시작합니다…" });
+      const catchUp = chatCatchUp({ messages: chat.messages });
+      r = await stream(`${context}\n\n${chatOpening({ readings })}\n\n${catchUp}\n\n다음 물음:\n${text}`, { resume: null });
+    }
     chat.messages.push({ role: "user", text, at }, { role: "assistant", text: r.text, at: new Date().toISOString() });
     chat.sessionId = r.sessionId ?? chat.sessionId;
     chat.costUsd = (chat.costUsd || 0) + (r.costUsd || 0);
@@ -346,6 +377,15 @@ function orderPhotos(notes, scrap) {
 }
 
 const scrapping = new Set();
+
+/** 공개용 사진이 있고 scrap 결과도 있을 때, scrap 에 없는 원본 = 그 뒤에 새로 올린 것. */
+async function freshNotes(date) {
+  const notes = await days.notePhotos(date);
+  const pub = await days.publicPhotos(date);
+  const seen = (await days.scrap(date))?.photos ?? [];
+  if (!pub.length || !seen.length) return [];
+  return notes.filter((n) => !seen.some((p) => p.file === n));
+}
 
 async function scrapPhotos(date, names) {
   if (scrapping.has(date)) throw Object.assign(new Error("이미 사진을 보는 중입니다."), { status: 409 });
@@ -401,7 +441,15 @@ async function appendRecord(date) {
   if (!record) return false;
   const path = join(REPO, "WORKFLOW.md");
   const text = await readFile(path, "utf8");
-  if (text.includes(`### ${date} ·`) || text.includes(`### ${date} `)) return false; // 이미 기록돼 있다
+  // 이미 그날 기록이 있으면 (이정표를 덧붙인 뒤 다시 발행) 그 블록을 새 기록으로 바꾼다. 블록은 다음 "### " 제목 앞까지.
+  const head = text.indexOf(`### ${date} `);
+  if (head >= 0) {
+    const next = text.indexOf("\n### ", head + 1);
+    const old = text.slice(head, next >= 0 ? next + 1 : text.length).trimEnd();
+    if (old === record) return false;
+    await writeFile(path, text.slice(0, head) + record + "\n" + text.slice(head + old.length).replace(/^\n+/, "\n"), "utf8");
+    return true;
+  }
   if (!text.includes(RECORD_MARKER)) return false;
   await writeFile(path, text.replace(RECORD_MARKER, `${record}\n\n${RECORD_MARKER}`), "utf8");
   return true;
@@ -674,6 +722,11 @@ const handler = async (req, res) => {
       return;
     }
 
+    if (req.method === "GET" && path === "/api/bible/books") {
+      send(res, 200, { books: bookList() });
+      return;
+    }
+
     const m = /^\/api\/days\/(\d{4}-\d{2}-\d{2})(?:\/([\w-]+))?(?:\/(.+))?$/.exec(path);
     if (!m) {
       send(res, 404, { error: "없는 주소입니다." });
@@ -802,13 +855,15 @@ const handler = async (req, res) => {
         send(res, 400, { error: "대화나 노트 사진 가운데 하나는 있어야 합니다." });
         return;
       }
+      const extend = Boolean(body.extend) && summary.hasContent;
       await days.saveJob(date, {
         status: "queued",
         mode,
+        extend,
         stopBeforePublish: Boolean(body.stopBeforePublish),
         instructions: String(body.instructions ?? ""),
         hasConversation: summary.hasConversation,
-        steps: newSteps(mode === "publish" ? ["photos", "draft", "apply", "publish"] : ["draft"]),
+        steps: newSteps(mode === "publish" ? ["photos", "draft", "apply", "publish"] : ["draft"], { extend }),
         attempts: 0,
         problems: [],
         review: [],
@@ -816,7 +871,7 @@ const handler = async (req, res) => {
         createdAt: new Date().toISOString(),
       });
       enqueue(date);
-      send(res, 202, { ok: true, mode, queued: queue.length + (working ? 1 : 0) });
+      send(res, 202, { ok: true, mode, extend, queued: queue.length + (working ? 1 : 0) });
       return;
     }
 
@@ -842,16 +897,39 @@ const handler = async (req, res) => {
     if (part === "readings" && req.method === "GET") {
       // 굿뉴스 매일미사에서 그날 말씀을 가져옵니다. 한 번 가져오면 readings.json 에 두고, ?refresh=1 이면 다시 가져옵니다.
       const refresh = url.searchParams.get("refresh") === "1";
-      let readings = refresh ? null : await days.readings(date);
+      const had = await days.readings(date);
+      let readings = refresh ? null : had;
       if (!readings) {
         try {
-          readings = await days.saveReadings(date, await fetchReadings(date));
+          readings = await days.saveReadings(date, { ...(await fetchReadings(date)), extra: had?.extra ?? [] });
           console.log(`[${date}] 말씀 가져옴 · ${readingsSummary(readings)}`);
         } catch (e) {
           send(res, 502, { error: `굿뉴스에서 말씀을 가져오지 못했습니다: ${e.message}` });
           return;
         }
       }
+      send(res, 200, { readings });
+      return;
+    }
+
+    if (part === "readings" && rest === "extra" && req.method === "POST") {
+      // 묵상하다 떠오른 구절을 굿뉴스 성경에서 가져와 그날 말씀에 더합니다. {"ref": "요한 15,5-8"}
+      const body = await readJson(req);
+      let passage;
+      try {
+        passage = await fetchPassage(String(body.ref ?? ""));
+      } catch (e) {
+        send(res, e.status ?? 502, { error: e.status ? e.message : `굿뉴스 성경에서 가져오지 못했습니다: ${e.message}` });
+        return;
+      }
+      const readings = await days.addExtra(date, passage);
+      console.log(`[${date}] 말씀 더함 · ${passage.ref}`);
+      send(res, 200, { readings, added: passage.ref });
+      return;
+    }
+
+    if (part === "readings" && rest?.startsWith("extra/") && req.method === "DELETE") {
+      const readings = await days.removeExtra(date, decodeURIComponent(rest.slice("extra/".length)));
       send(res, 200, { readings });
       return;
     }

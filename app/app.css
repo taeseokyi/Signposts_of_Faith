@@ -157,6 +157,11 @@ pre.md, pre.git {
 .readings summary { cursor: pointer; font-size: 14px; }
 .readings summary .ref { color: var(--gold); font-weight: 700; }
 .readings summary .heading { color: var(--sub); font-size: 13px; }
+.readings .extra-row { margin-top: 8px; }
+.readings .extra-row select { flex: 1 1 150px; min-width: 0; }
+.readings .extra-row input { flex: 1 1 120px; min-width: 0; }
+.readings details.extra summary .ref { color: var(--accent, var(--gold)); }
+.readings summary .remove { float: right; font-size: 12px; color: var(--sub); background: none; border: 0; cursor: pointer; padding: 0 4px; }
 .readings .text { white-space: pre-wrap; font-size: 14px; line-height: 1.7; margin: 6px 0 0 4px; padding-left: 10px; border-left: 3px solid var(--line); }
 
 /* ---------- 2단계: 사진 판독과 자르기 ---------- */

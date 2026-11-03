@@ -98,6 +98,20 @@ export class Days {
     return readings;
   }
 
+  /** 묵상하다 떠오른 구절을 그날 말씀에 더합니다. 같은 장절이 이미 있으면 그대로 둡니다. */
+  async addExtra(date, passage) {
+    const r = (await this.readings(date)) ?? { date, title: "", color: "", readings: [] };
+    const extra = r.extra ?? [];
+    if (!extra.some((x) => x.ref === passage.ref)) extra.push({ ...passage, addedAt: new Date().toISOString() });
+    return this.saveReadings(date, { ...r, extra });
+  }
+
+  async removeExtra(date, ref) {
+    const r = await this.readings(date);
+    if (!r) return null;
+    return this.saveReadings(date, { ...r, extra: (r.extra ?? []).filter((x) => x.ref !== ref) });
+  }
+
   async list() {
     const entries = await readdir(this.repo, { withFileTypes: true }).catch(() => []);
     const dates = entries.filter((e) => e.isDirectory() && DAY_RE.test(e.name)).map((e) => e.name);
@@ -133,6 +147,8 @@ export class Days {
       job: job && {
         status: job.status,
         mode: job.mode,
+        extend: Boolean(job.extend),
+        extendFrom: job.extendFrom ?? null,
         attempts: job.attempts,
         error: job.error,
         hold: job.hold,
@@ -155,6 +171,7 @@ export class Days {
       content: (await readText(this.contentPath(date))) ?? "",
       notes: await this.notePhotos(date),
       draft: (await readText(this.draftPath(date))) ?? "",
+      draftMilestones: await readText(this.draftPath(date)).then((d) => (d ? countMilestones(d) : null)),
       record: (await readText(this.recordPath(date))) ?? "",
       readings: await this.readings(date),
       job: await this.job(date),
@@ -371,6 +388,17 @@ export function countMilestones(contentMd) {
     else if (inSection && /^## /.test(line)) n++;
   }
   return n;
+}
+
+/** "# 이정표" 절의 "## " 제목들. 대화에서 claude 에게 글에 이미 있는 물음을 알릴 때 씁니다. */
+export function milestoneTitles(contentMd) {
+  let inSection = false;
+  const out = [];
+  for (const line of String(contentMd).split(/\r?\n/)) {
+    if (/^# /.test(line)) inSection = line.includes("이정표");
+    else if (inSection && /^## /.test(line)) out.push(line.slice(3).trim());
+  }
+  return out;
 }
 
 export function subtitleOf(contentMd) {

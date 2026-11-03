@@ -60,6 +60,7 @@
         <ul class="ready" id="ready"></ul>
         <div class="row">
           <button class="primary" id="btn-run">기초자료로 발행</button>
+          <label class="inline" id="extend-auto-label" hidden><input type="checkbox" id="extend-auto"> <b>있는 글에 덧붙이기</b> (새 물음·노트만 더하고 있는 글은 그대로)</label>
           <label class="inline"><input type="checkbox" id="stop-before-publish"> 발행 전에 멈추기 (content.md 까지만)</label>
         </div>
         <ol class="steps" id="steps"></ol>
@@ -75,6 +76,12 @@
             <button class="link" id="btn-readings">다시 불러오기</button>
           </div>
           <div id="readings-list"></div>
+          <div class="row extra-row">
+            <select id="extra-book" title="성경 책 (구약·신약)"><option value="">책 고르기</option></select>
+            <input type="text" id="extra-ref" placeholder="장,절 (예: 15,5-8) 또는 책 이름까지" autocomplete="off">
+            <button id="btn-extra">말씀 더하기</button>
+          </div>
+          <p class="hint">묵상하다 떠오른 구절을 굿뉴스 성경에서 가져와 그날 말씀에 더합니다. 대화에서 바로 물을 수 있고, 덧붙이기 발행 때 여는 말씀·근거에 들어갑니다.</p>
           <p class="hint" id="readings-msg"></p>
         </div>
         <div class="chat" id="chat-log"></div>
@@ -133,6 +140,7 @@
         <textarea id="instructions" rows="2" placeholder="덧붙일 지시 (선택). 예: 이정표는 두 개로. 노트의 빨간 글씨가 결론이다."></textarea>
         <div class="row">
           <button class="primary" id="btn-draft">초안 만들기</button>
+          <label class="inline" id="extend-draft-label" hidden><input type="checkbox" id="extend-draft"> <b>있는 글에 덧붙이기</b></label>
           <span class="hint" id="draft-msg"></span>
         </div>
         <div id="draft-result" hidden>
