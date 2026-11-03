@@ -502,6 +502,13 @@ async function sendChat() {
     const reader = res.body.getReader();
     const dec = new TextDecoder();
     let buf = "";
+    // 조각이 올 때마다 다시 그리지 않고 한 프레임에 한 번만 마크다운으로 그립니다.
+    let paintQueued = false;
+    const paint = () => {
+      paintQueued = false;
+      bubble.innerHTML = renderMarkdown(acc);
+      log.scrollTop = log.scrollHeight;
+    };
     const handle = (line) => {
       let ev;
       try {
@@ -512,8 +519,10 @@ async function sendChat() {
       if (ev.delta) {
         acc += ev.delta;
         bubble.classList.add("thinking");
-        bubble.textContent = acc;
-        log.scrollTop = log.scrollHeight;
+        if (!paintQueued) {
+          paintQueued = true;
+          requestAnimationFrame(paint);
+        }
       } else if (ev.status) {
         bubble.innerHTML = (acc ? renderMarkdown(acc) : "") + `<span class="status">${escapeHtml(ev.status)}</span>`;
       } else if (ev.done) {
