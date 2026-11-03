@@ -392,7 +392,7 @@ function renderDay(day) {
       const grew = job.extend && job.extendFrom != null && day.draftMilestones != null ? `이정표 ${job.extendFrom}개 → ${day.draftMilestones}개` : "";
       $("draft-msg").textContent = [job.title ? `제목: ${job.title}` : "", grew].filter(Boolean).join(" · ");
     } else {
-      setBadge("b-draft", "아직", "");
+      setBadge("b-draft", extendChecked() ? "추가 모드" : "아직", "");
       $("draft-msg").textContent = "";
     }
   }
@@ -524,6 +524,9 @@ function renderExtend(day) {
   else if (!state.extendTouched) setExtend(Boolean(day.hasContent));
   $("extend-auto").disabled = running;
   $("extend-draft").disabled = running;
+  const on = extendChecked();
+  $("btn-run").textContent = on ? "추가 모드로 발행" : "기초자료로 발행";
+  $("btn-draft").textContent = on ? "추가 모드로 초안 만들기" : "초안 만들기";
 }
 
 function extendChecked() {
@@ -550,12 +553,12 @@ function renderAuto(day) {
     [day.notes.length > 0, day.notes.length ? `노트 사진 원본 ${day.notes.length}장` : "노트 사진 없음"],
     [day.publicPhotos.length > 0, day.publicPhotos.length ? `공개용 ${day.publicPhotos.length}장 (있으면 자르기 단계는 건너뜀)` : "공개용 사진은 발행할 때 자릅니다"],
     ...(freshNotes(day).length ? [[true, `새로 올린 노트 사진 ${freshNotes(day).length}장 — 발행할 때 이 날짜 부분을 찾아 공개용으로 더합니다`]] : []),
-    ...(day.readings?.extra?.length ? [[true, `더한 말씀 ${day.readings.extra.map((x) => x.ref).join(", ")} — 덧붙이기 때 여는 말씀에 들어갑니다`]] : []),
+    ...(day.readings?.extra?.length ? [[true, `더한 말씀 ${day.readings.extra.map((x) => x.ref).join(", ")} — 추가 모드로 발행하면 여는 말씀에 들어갑니다`]] : []),
     [day.hasContent, !day.hasContent
       ? "content.md 아직 없음"
       : extend
-        ? `content.md 있음 (이정표 ${day.milestones ?? 0}개) — 덧붙이기: 있는 글은 그대로 두고, 대화의 새 물음과 노트의 새 내용만 여는 말씀·이정표·흐름·한 줄·다시 펼쳐 볼 물음·근거에 더합니다`
-        : "content.md 있음 — 덧붙이기를 끄면 초안을 새로 써서 덮어씁니다 (손으로 고친 것은 사본에만 남음). 고친 글을 다시 올리려면 4단계에서 저장하고 5단계로 발행하세요"],
+        ? `content.md 있음 (이정표 ${day.milestones ?? 0}개) — 추가 모드: 있는 글은 그대로 두고, 대화의 새 물음과 노트의 새 내용만 여는 말씀·이정표·흐름·한 줄·다시 펼쳐 볼 물음·근거에 더합니다`
+        : "content.md 있음 — 추가 모드를 끄면 초안을 새로 써서 덮어씁니다 (손으로 고친 것은 사본에만 남음). 고친 글을 다시 올리려면 4단계에서 저장하고 5단계로 발행하세요"],
   ];
   ready.innerHTML = items.map(([ok, text]) => `<li class="${ok ? "ok" : "no"}">${escapeHtml(text)}</li>`).join("");
 
@@ -576,7 +579,7 @@ function renderAuto(day) {
     setBadge("b-auto", `${elsewhere} 작업 중`, "warn");
     msg.textContent = `${elsewhere} 의 작업이 진행 중입니다. 노트북의 claude 는 한 번에 하나만 돌리므로 끝난 뒤 시작할 수 있습니다.`;
   } else if (!job || job.mode !== "publish") {
-    setBadge("b-auto", running ? "초안 작업 중" : "", running ? "warn" : "");
+    setBadge("b-auto", running ? "초안 작업 중" : extend ? "추가 모드" : "", running ? "warn" : "");
     msg.textContent = "";
   } else if (running) {
     setBadge("b-auto", job.status === "queued" ? "대기 중" : "발행 중", "warn");
@@ -593,7 +596,7 @@ function renderAuto(day) {
       ? publishedNote(job)
       : `커밋은 됐지만 push 가 안 됐습니다: ${escapeHtml(job.publish.pushError ?? "")} — 5단계에서 git 상태를 보고 노트북에서 push 하세요.`;
   } else {
-    setBadge("b-auto", "", "");
+    setBadge("b-auto", extend ? "추가 모드" : "", "");
     msg.textContent = "";
   }
 }
