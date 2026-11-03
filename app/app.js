@@ -139,7 +139,7 @@ async function loadDays() {
     const tags = [];
     if (d.hasConversation) tags.push(["대화", ""]);
     if (d.noteCount) tags.push([`노트 ${d.noteCount}장`, ""]);
-    if (d.publicPhotos.length) tags.push([`공개 ${d.publicPhotos.length}장`, ""]);
+    if (d.publicPhotos.length) tags.push([`사진 ${d.publicPhotos.length}장`, ""]);
     if (d.job?.status === "running" || d.job?.status === "queued") tags.push([d.job.mode === "publish" ? "발행 작업 중" : "초안 작성 중", "run"]);
     else if (d.job?.status === "error") tags.push([d.job.mode === "publish" ? "발행 실패" : "초안 실패", "bad"]);
     else if (d.job?.status === "hold") tags.push(["확인 필요", "run"]);
