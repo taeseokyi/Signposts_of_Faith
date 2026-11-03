@@ -344,8 +344,11 @@ function renderDay(day) {
   }
   const turns = day.chatTurns ?? 0;
   if (!state.chatting) renderChat(day.chat?.messages ?? []);
-  if (document.activeElement !== $("conversation")) $("conversation").value = turns ? "" : day.conversation;
-  $("paste-box").open = !turns && day.hasConversation;
+  if (document.activeElement !== $("conversation")) {
+    $("conversation").value = day.conversation ?? "";
+    renderConvCount();
+  }
+  $("paste-box").open = Boolean((day.conversation ?? "").trim());
   // 물음 하나가 이정표 하나. 개수는 글(content.md)이 있을 때 그 안의 이정표 수로 보이고, 없으면 개수를 보이지 않는다.
   const count = day.hasContent && day.milestones ? `이정표 ${day.milestones}개` : "";
   setBadge("b-conv", count || (turns ? "대화 있음" : day.hasConversation ? "붙여 넣음" : "없음"), day.hasConversation ? "ok" : "");
@@ -424,11 +427,32 @@ function renderDay(day) {
   $("link-day").href = `${SITE_URL}${day.date}/`;
 }
 
+/** 붙여 넣은 글의 분량. 폰에서 붙여 넣기가 잘렸는지 바로 알 수 있게 글자 수와 "## 나" 같은 차례 수를 보입니다. */
+function renderConvCount() {
+  const text = $("conversation").value;
+  if (!text.trim()) {
+    $("conv-count").textContent = "";
+    return;
+  }
+  const turns = (text.match(/^##\s*나\b/gm) ?? []).length;
+  $("conv-count").textContent = `${text.length.toLocaleString("ko-KR")}자` + (turns ? ` · 물음 ${turns}개` : "") + " (길이 제한 없음)";
+}
+
+/** 파일(.txt/.md)에 담긴 대화를 읽어 붙여 넣기 칸에 넣고 바로 저장합니다. 긴 대화를 폰에서 붙여 넣기 어려울 때 씁니다. */
+async function loadConversationFile(file) {
+  if (!file) return;
+  const text = await file.text();
+  $("conversation").value = text;
+  renderConvCount();
+  await saveConversation();
+}
+
 async function saveConversation() {
   busy($("btn-save-conv"), true);
   try {
-    const r = await api(`/api/days/${state.date}/conversation`, { method: "PUT", body: { text: $("conversation").value } });
-    $("conv-msg").textContent = r.hasConversation ? "저장했습니다." : "비어 있어 대화 파일을 지웠습니다.";
+    const text = $("conversation").value;
+    const r = await api(`/api/days/${state.date}/conversation`, { method: "PUT", body: { text } });
+    $("conv-msg").textContent = r.hasConversation ? `저장했습니다 (${text.trim().length.toLocaleString("ko-KR")}자).` : "비어 있어 대화 파일을 지웠습니다.";
     await refreshDay();
   } catch (e) {
     toast(e.message);
@@ -1257,6 +1281,11 @@ function wire() {
   $("btn-refresh-days").addEventListener("click", () => loadDays().catch((e) => toast(e.message)));
   $("btn-new-day").addEventListener("click", newDay);
   $("btn-save-conv").addEventListener("click", saveConversation);
+  $("conversation").addEventListener("input", renderConvCount);
+  $("file-conv").addEventListener("change", (e) => {
+    loadConversationFile(e.target.files?.[0]).catch((err) => toast(err.message));
+    e.target.value = "";
+  });
   $("btn-chat-send").addEventListener("click", sendChat);
   $("chat-input").addEventListener("keydown", (e) => {
     if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) sendChat();

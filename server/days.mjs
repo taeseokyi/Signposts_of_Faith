@@ -1,12 +1,13 @@
 // 날짜 폴더(YYYY-MM-DD/)를 다룹니다. 저장소 작업 폴더 자체가 자료 보관소입니다.
 //
 //   <저장소>/2026-10-24/
-//     대화.md               Claude 와 나눈 대화 원문 (git 제외)
+//     대화.md               대화 원문 (git 제외). 화면 채팅 + 붙여 넣은 대화를 합쳐 서버가 만든다
 //     노트/photo-1.jpg      묵상 노트 사진 원본 (git 제외)
 //     note-2026-10-24.jpg   공개용 노트 사진 (커밋됨)
 //     content.md            그날의 글 (커밋됨)
 //   <저장소>/server/data/2026-10-24/
-//     chat.json             화면에서 claude 와 주고받은 대화 (세션 ID, 메시지). 대화.md 는 여기서 만든다
+//     chat.json             화면에서 claude 와 주고받은 대화 (세션 ID, 메시지)
+//     pasted.md             붙여 넣은 대화 (Claude 데스크톱 등). 채팅과 함께 대화.md 에 들어간다
 //     scrap.json            노트 사진에서 그 날짜 부분을 찾은 결과 (자를 영역 제안)
 //     readings.json         굿뉴스 매일미사에서 가져온 그날의 전례일과 독서·복음 본문
 //     job.json              초안 작업 상태
@@ -56,6 +57,10 @@ export class Days {
     return join(this.dir(date), "대화.md");
   }
 
+  pastedPath(date) {
+    return join(this.stateDir(date), "pasted.md");
+  }
+
   contentPath(date) {
     return join(this.dir(date), "content.md");
   }
@@ -92,9 +97,7 @@ export class Days {
   async saveReadings(date, readings) {
     await mkdir(this.stateDir(date), { recursive: true });
     await writeFile(this.readingsPath(date), JSON.stringify(readings, null, 2), "utf8");
-    // 대화.md 첫머리의 말씀 절도 맞춘다
-    const chat = await this.chat(date);
-    if (chat.messages.length) await this.writeConversation(date, conversationMarkdown(date, chat.messages, readings));
+    await this.rebuildConversation(date); // 대화.md 첫머리의 말씀 절도 맞춘다
     return readings;
   }
 
@@ -165,7 +168,7 @@ export class Days {
     const base = await this.summary(date);
     return {
       ...base,
-      conversation: (await readText(this.conversationPath(date))) ?? "",
+      conversation: await this.pasted(date),
       chat: await this.chat(date),
       scrap: await this.scrap(date),
       content: (await readText(this.contentPath(date))) ?? "",
@@ -180,14 +183,45 @@ export class Days {
 
   // ---------- 대화 ----------
 
+  /** 붙여 넣은 대화. pasted.md 가 없으면(이 구분을 두기 전의 날짜) 채팅이 없을 때의 대화.md 가 그것이다. */
+  async pasted(date) {
+    const p = await readText(this.pastedPath(date));
+    if (p != null) return p;
+    const chat = await this.chat(date);
+    return chat.messages.length ? "" : (await readText(this.conversationPath(date))) ?? "";
+  }
+
+  /** 붙여 넣은 대화를 저장하고 대화.md 를 다시 만듭니다. 화면 채팅이 있어도 지워지지 않고 함께 들어갑니다. */
   async writeConversation(date, text) {
-    await mkdir(this.dir(date), { recursive: true });
+    await mkdir(this.stateDir(date), { recursive: true });
     const clean = String(text).replace(/\r\n/g, "\n").trim();
-    if (!clean) {
+    if (clean) {
+      await writeFile(this.pastedPath(date), clean + "\n", "utf8");
+      return this.rebuildConversation(date);
+    }
+    // 비우기: 붙여 넣은 글을 지운다. 채팅이 없으면 대화.md 도 지운다 (이 구분을 두기 전의 대화.md 포함)
+    await rm(this.pastedPath(date), { force: true });
+    if ((await this.chat(date)).messages.length) return this.rebuildConversation(date);
+    await rm(this.conversationPath(date), { force: true });
+    return false;
+  }
+
+  /**
+   * 대화.md = 말씀 + 화면 채팅 + 붙여 넣은 대화. 채팅이 없으면 붙여 넣은 글을 그대로 둔다 (사용자의 형식 유지).
+   * @returns {Promise<boolean>} 대화.md 가 있는지
+   */
+  async rebuildConversation(date) {
+    const chat = await this.chat(date);
+    const pasted = (await readText(this.pastedPath(date)))?.trim() || "";
+    if (!chat.messages.length && !pasted) {
+      // pasted.md 를 두기 전에 직접 쓴 대화.md 는 남긴다
+      if ((await readText(this.pastedPath(date))) == null) return exists(this.conversationPath(date));
       await rm(this.conversationPath(date), { force: true });
       return false;
     }
-    await writeFile(this.conversationPath(date), clean + "\n", "utf8");
+    await mkdir(this.dir(date), { recursive: true });
+    const text = chat.messages.length ? conversationMarkdown(date, chat.messages, await this.readings(date), pasted) : pasted + "\n";
+    await writeFile(this.conversationPath(date), text, "utf8");
     return true;
   }
 
@@ -208,13 +242,15 @@ export class Days {
   async saveChat(date, chat) {
     await mkdir(this.stateDir(date), { recursive: true });
     await writeFile(this.chatPath(date), JSON.stringify(chat, null, 2), "utf8");
-    await this.writeConversation(date, conversationMarkdown(date, chat.messages, await this.readings(date)));
+    await this.rebuildConversation(date);
     return chat;
   }
 
+  /** 화면 채팅만 지웁니다. 붙여 넣은 대화는 남습니다. */
   async clearChat(date) {
     await rm(this.chatPath(date), { force: true });
-    await rm(this.conversationPath(date), { force: true });
+    if ((await readText(this.pastedPath(date))) == null) await rm(this.conversationPath(date), { force: true });
+    else await this.rebuildConversation(date);
   }
 
   // ---------- 노트 사진에서 그 날짜 부분 찾기 ----------
@@ -370,12 +406,13 @@ export class Days {
 }
 
 /** 화면 안 대화를 대화.md 형식으로. 사용자 차례는 "## 나", claude 차례는 "## Claude". 말씀이 있으면 첫머리에 "## 말씀" 절. */
-export function conversationMarkdown(date, messages, readings = null) {
+export function conversationMarkdown(date, messages, readings = null, pasted = "") {
   const parts = [`# ${date} 묵상 대화 (노트북 도우미에서 claude 와 나눔)`];
   if (readings?.readings?.length) parts.push(`## 말씀 (굿뉴스 매일미사에서 가져옴)\n\n${readingsBlock(readings)}`);
   for (const m of messages) {
     parts.push(`## ${m.role === "user" ? "나" : "Claude"}\n\n${String(m.text).trim()}`);
   }
+  if (pasted) parts.push(`## 붙여 넣은 대화 (다른 곳에서 나눈 대화를 그대로 옮김)\n\n${pasted.trim()}`);
   return parts.join("\n\n") + "\n";
 }
 

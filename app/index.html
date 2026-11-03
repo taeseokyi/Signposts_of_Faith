@@ -92,11 +92,13 @@
         </div>
         <p class="hint" id="chat-msg"></p>
         <details id="paste-box">
-          <summary>대신 Claude 데스크톱 대화를 붙여 넣기</summary>
-          <p class="hint">여기서 대화하지 않은 날은 데스크톱 대화를 전체 복사해 붙여 넣습니다. 위에서 다시 대화하면 이 내용은 그 대화로 바뀝니다.</p>
-          <textarea id="conversation" rows="8" placeholder="대화를 붙여 넣으세요. 없으면 비워 두세요 — 노트 사진만으로 물음을 다시 세웁니다."></textarea>
+          <summary>다른 곳에서 나눈 대화 붙여 넣기 (Claude 데스크톱 등)</summary>
+          <p class="hint">다른 곳에서 나눈 대화를 전체 복사해 붙여 넣습니다. 위의 화면 대화와 함께 <code>대화.md</code> 에 들어가며, 초안은 두 대화의 물음을 모두 셉니다.</p>
+          <textarea id="conversation" rows="14" placeholder="대화를 붙여 넣으세요. 길이 제한은 없습니다. 없으면 비워 두세요 — 노트 사진만으로 물음을 다시 세웁니다."></textarea>
+          <p class="hint" id="conv-count"></p>
           <div class="row">
             <button id="btn-save-conv">붙여 넣은 대화 저장</button>
+            <label class="file-btn">파일로 올리기 (.txt/.md)<input type="file" id="file-conv" accept=".txt,.md,text/plain,text/markdown"></label>
             <span class="hint" id="conv-msg"></span>
           </div>
         </details>
