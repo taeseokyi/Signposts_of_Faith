@@ -176,7 +176,8 @@ async function runJob(date) {
       const same = prev && prev.photos.length === notes.length && notes.every((n) => prev.photos.some((p) => p.file === n));
       const scrap = same ? prev : await scrapPhotos(date, null);
       if (!same) cost += scrap.costUsd || 0;
-      const hits = scrap.photos.filter((p) => p.has_day);
+      // 공개용 번호는 파일 이름이 아니라 노트를 읽는 순서(order)를 따릅니다. 날짜 표시가 있는 쪽이 먼저.
+      const hits = scrap.photos.filter((p) => p.has_day).sort((a, b) => (a.order || 99) - (b.order || 99));
       if (!hits.length) {
         await stop("photos", `노트 사진 ${notes.length}장에서 ${date} 의 부분을 찾지 못했습니다. 날짜가 맞는지 확인하세요. (${scrap.summary})`);
         return;
@@ -341,7 +342,7 @@ async function scrapPhotos(date, names) {
     const photos = (Array.isArray(output.photos) ? output.photos : [])
       .map((p) => ({ ...p, file: String(p.file ?? "").split("/").pop() }))
       .filter((p) => wanted.includes(p.file))
-      .map((p) => ({ ...p, crop: p.has_day && p.crop ? clampCrop(p.crop) : null }));
+      .map((p) => ({ ...p, order: Number.isInteger(p.order) && p.order > 0 ? p.order : 0, crop: p.has_day && p.crop ? clampCrop(p.crop) : null }));
     const prev = (await days.scrap(date))?.photos ?? [];
     // 이번에 보지 않은 사진의 지난 결과는 남겨 둡니다.
     const merged = [...prev.filter((p) => !wanted.includes(p.file) && notes.includes(p.file)), ...photos];

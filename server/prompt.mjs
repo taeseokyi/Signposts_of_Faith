@@ -199,12 +199,13 @@ export const SCRAP_SCHEMA = {
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["file", "has_day", "evidence", "other_days", "crop", "private"],
+        required: ["file", "has_day", "evidence", "other_days", "order", "crop", "private"],
         properties: {
           file: { type: "string", description: "사진 파일 이름 (경로 말고 이름만)" },
           has_day: { type: "boolean", description: "이 날짜의 노트가 이 사진에 있는가" },
           evidence: { type: "string", description: "무엇을 보고 판단했는가: 날짜 표시, 독서·복음 장절, 전례일 이름" },
           other_days: { type: "array", items: { type: "string" }, description: "같은 사진에 보이는 다른 날짜 표시" },
+          order: { type: "integer", description: "이 날짜의 글이 이어지는 차례. 글의 맥락으로 정한다: 그날 글이 시작하는 부분이 1, 그 마지막 문장이 이어지는 부분이 2, 3 … has_day 가 아니면 0" },
           crop: {
             type: ["object", "null"],
             additionalProperties: false,
@@ -241,7 +242,11 @@ ${hint ? `\n이 날짜에 대해 대화에서 알게 된 것: ${hint}\n` : ""}
 판단 기준: 노트에 적힌 날짜 표시 (예: 11/3, 11.3, 11월 3일, 요일), 독서·복음 장절, 전례일 이름.
 ${date} 는 ${monthDay(date)} 이다. 날짜 표시가 없으면 장절로 추정하고 evidence 에 그렇게 적는다.
 
-각 사진마다 has_day, evidence, other_days, crop, private 를 낸다.
+각 사진마다 has_day, evidence, other_days, order, crop, private 를 낸다.
+- order 는 그날 글이 이어지는 차례다. 파일 이름이나 촬영 순서가 아니라 **글의 맥락**으로 정한다.
+  각 사진의 그날 부분에서 첫 줄과 마지막 줄을 읽고, 어느 부분의 마지막 문장이 어느 부분의 첫 줄로 이어지는지 본다
+  (예: 한 쪽 아래의 날짜·장절 표시와 물음이 다음 쪽 첫 줄의 답으로 이어지면 물음이 있는 쪽이 1, 답이 이어지는 쪽이 2).
+  글이 시작하는 부분이 1, 그것을 잇는 부분이 2, 3 … 이다. 이어지는 근거(앞 부분의 끝 문장과 뒤 부분의 첫 문장)를 evidence 에 적는다. has_day 가 아니면 0.
 - crop 은 그 날짜의 글이 모두 들어가고 다른 날의 줄은 들어가지 않는 가장 작은 사각형에 위아래로 2~3% 여유를 둔 것이다.
   top/bottom 은 위에서부터의 높이 비율, left/right 는 왼쪽부터의 너비 비율이다 (0 ≤ top < bottom ≤ 1, 0 ≤ left < right ≤ 1).
   그날 부분이 사진 전체면 {top:0, bottom:1, left:0, right:1}. 날짜 표시 줄은 crop 안에 넣는다.

@@ -188,15 +188,31 @@ async function openDay(date) {
   await refreshDay();
 }
 
+function jobRunning(job) {
+  return Boolean(job && (job.status === "running" || job.status === "queued"));
+}
+
+function pollLater(ms) {
+  clearTimeout(state.poll);
+  state.poll = setTimeout(() => refreshDay().catch(() => {}), ms);
+}
+
 async function refreshDay() {
-  const { day } = await api(`/api/days/${state.date}`);
+  clearTimeout(state.poll);
+  const date = state.date;
+  let day;
+  try {
+    ({ day } = await api(`/api/days/${date}`));
+  } catch (e) {
+    // 폰 화면이 꺼졌다 켜지는 사이에 요청이 끊겨도 작업 중이었으면 조금 뒤 다시 묻습니다.
+    if (state.date === date && jobRunning(state.day?.job)) pollLater(8000);
+    throw e;
+  }
+  if (state.date !== date) return; // 그 사이 다른 화면으로 나갔음
   state.day = day;
   renderDay(day);
-  // 초안을 만드는 중이면 몇 초마다 다시 봅니다.
-  clearTimeout(state.poll);
-  if (day.job && (day.job.status === "running" || day.job.status === "queued")) {
-    state.poll = setTimeout(refreshDay, 4000);
-  }
+  // 작업 중이면 몇 초마다 다시 봅니다.
+  if (jobRunning(day.job)) pollLater(4000);
 }
 
 function renderDay(day) {
@@ -224,7 +240,7 @@ function renderDay(day) {
       div.innerHTML =
         `<img src="/api/days/${day.date}/photos/${encodeURIComponent(name)}" alt="${name}" loading="lazy">` +
         `<span class="kind">${kind}</span><button class="del" title="지우기">×</button>` +
-        (sc ? `<span class="tag ${sc.has_day ? "ok" : "no"}" title="${escapeHtml(sc.evidence ?? "")}">${sc.has_day ? "이 날짜 ✓" : "다른 날"}</span>` : "") +
+        (sc ? `<span class="tag ${sc.has_day ? "ok" : "no"}" title="${escapeHtml(sc.evidence ?? "")}">${sc.has_day ? `이 날짜 ✓${sc.order ? ` ${sc.order}번째` : ""}` : "다른 날"}</span>` : "") +
         (kind === "원본" ? `<button class="cut" title="이 날짜 부분을 잘라 공개용으로">자르기</button>` : "") +
         `<div class="name">${name}</div>`;
       div.querySelector(".del").addEventListener("click", () => deletePhoto(name));
@@ -925,6 +941,15 @@ async function main() {
     else loadDays().catch((e) => toast(e.message));
   }
 }
+
+// 폰 화면을 다시 켜거나 앱으로 돌아오면 열어 둔 날짜의 상태를 새로 묻습니다.
+function refreshOnReturn() {
+  if (document.visibilityState !== "visible" || !state.date || !state.token) return;
+  refreshDay().catch(() => {});
+}
+document.addEventListener("visibilitychange", refreshOnReturn);
+window.addEventListener("pageshow", refreshOnReturn);
+window.addEventListener("online", refreshOnReturn);
 
 if ("serviceWorker" in navigator && location.protocol === "https:") {
   navigator.serviceWorker.register("sw.js").catch(() => {});
