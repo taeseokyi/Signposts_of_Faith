@@ -161,7 +161,7 @@ async function watchJobs() {
   watchTimer = null;
   let running = false;
   try {
-    const { days } = await api("/api/days");
+    const { days, busy = null } = await api("/api/days");
     let listChanged = false;
     let finishedOpenDay = false;
     for (const d of days) {
@@ -174,11 +174,12 @@ async function watchJobs() {
       if (jobRunning(d.job)) running = true;
     }
     if (listChanged && !$("view-days").hidden) loadDays().catch(() => {});
-    const busy = days.find((d) => jobRunning(d.job))?.date ?? null;
     const busyChanged = busy !== state.busy;
     state.busy = busy;
     // 열어 둔 날짜가 끝났거나, 다른 날짜의 작업이 시작·종료돼 단추 잠금이 바뀌면 그 화면을 새로 그립니다.
-    if (state.date && (finishedOpenDay || busyChanged)) refreshDay().catch(() => {});
+    // 열어 둔 날짜가 스스로 작업 중이면 refreshDay 가 4초마다 묻고 있으니 여기서는 건드리지 않습니다 (서로 부르는 고리 방지).
+    const openDayPolling = state.day && jobRunning(state.day.job);
+    if (state.date && (finishedOpenDay || (busyChanged && !openDayPolling))) refreshDay().catch(() => {});
   } catch {
     running = Object.values(state.lastJobs).some((st) => st === "running" || st === "queued");
   } finally {
@@ -230,7 +231,7 @@ async function loadDays() {
   for (const d of days) {
     if (jobChange(d.date, d.job).finished) onJobFinished(d.date, d.job);
   }
-  if (days.some((d) => jobRunning(d.job))) watchJobs();
+  if (days.some((d) => jobRunning(d.job)) && !watching && !watchTimer) watchJobs();
   if (!days.length) {
     ul.innerHTML = '<li class="sub">아직 날짜 폴더가 없습니다.</li>';
     return;
@@ -318,7 +319,7 @@ async function refreshDay() {
   state.busy = busy; // 지금 작업 중인 날짜 (다른 날짜일 수 있음)
   if (jobChange(date, day.job).finished) onJobFinished(date, day.job);
   renderDay(day);
-  if (jobRunning(day.job)) watchJobs();
+  if (jobRunning(day.job) && !watching && !watchTimer) watchJobs();
   // 작업 중이면 몇 초마다 다시 봅니다. 다른 날짜의 작업이 도는 동안도 끝나면 단추를 풀어야 하니 느리게 봅니다.
   if (jobRunning(day.job)) pollLater(4000);
   else if (busy && busy !== date) pollLater(8000);
@@ -343,7 +344,9 @@ function renderDay(day) {
   if (!state.chatting) renderChat(day.chat?.messages ?? []);
   if (document.activeElement !== $("conversation")) $("conversation").value = turns ? "" : day.conversation;
   $("paste-box").open = !turns && day.hasConversation;
-  setBadge("b-conv", turns ? `물음 ${turns}개` : day.hasConversation ? "붙여 넣음" : "없음", day.hasConversation ? "ok" : "");
+  // 물음 하나가 이정표 하나. 개수는 글(content.md)이 있을 때 그 안의 이정표 수로 보이고, 없으면 개수를 보이지 않는다.
+  const count = day.hasContent && day.milestones ? `이정표 ${day.milestones}개` : "";
+  setBadge("b-conv", count || (turns ? "대화 있음" : day.hasConversation ? "붙여 넣음" : "없음"), day.hasConversation ? "ok" : "");
   if (day.chat?.costUsd) $("chat-msg").textContent = `지금까지 약 $${day.chat.costUsd.toFixed(2)}`;
 
   // 2. 사진
@@ -512,7 +515,7 @@ function renderAuto(day) {
   const job = day.job;
   const ready = $("ready");
   const items = [
-    [day.hasConversation, day.chatTurns ? `대화 (물음 ${day.chatTurns}개)` : day.hasConversation ? "대화 (붙여 넣음)" : "대화 없음 — 노트만으로 물음을 세웁니다"],
+    [day.hasConversation, day.chatTurns ? "대화 있음" : day.hasConversation ? "대화 (붙여 넣음)" : "대화 없음 — 노트만으로 물음을 세웁니다"],
     [day.notes.length > 0, day.notes.length ? `노트 사진 원본 ${day.notes.length}장` : "노트 사진 없음"],
     [day.publicPhotos.length > 0, day.publicPhotos.length ? `공개용 ${day.publicPhotos.length}장 (있으면 자르기 단계는 건너뜀)` : "공개용 사진은 발행할 때 자릅니다"],
     [day.hasContent, day.hasContent ? "content.md 있음 — 다시 누르면 초안을 새로 써서 덮어씁니다 (손으로 고친 것은 사본에만 남음). 고친 글을 다시 올리려면 4단계에서 저장하고 5단계로 발행하세요" : "content.md 아직 없음"],

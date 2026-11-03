@@ -124,6 +124,7 @@ export class Days {
       date,
       hasConversation: await exists(this.conversationPath(date)),
       chatTurns: chat.messages.filter((m) => m.role === "user").length,
+      milestones: content ? countMilestones(content) : null,
       noteCount: (await this.notePhotos(date)).length,
       publicPhotos: await this.publicPhotos(date),
       hasContent: content != null,
@@ -359,6 +360,17 @@ export function conversationMarkdown(date, messages, readings = null) {
     parts.push(`## ${m.role === "user" ? "나" : "Claude"}\n\n${String(m.text).trim()}`);
   }
   return parts.join("\n\n") + "\n";
+}
+
+/** content.md 의 이정표 수: "# 이정표" 절 안의 "## " 제목 수. 물음 하나가 이정표 하나다. */
+export function countMilestones(contentMd) {
+  let inSection = false;
+  let n = 0;
+  for (const line of String(contentMd).split(/\r?\n/)) {
+    if (/^# /.test(line)) inSection = line.includes("이정표");
+    else if (inSection && /^## /.test(line)) n++;
+  }
+  return n;
 }
 
 export function subtitleOf(contentMd) {
