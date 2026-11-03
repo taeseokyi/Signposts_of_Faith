@@ -248,7 +248,7 @@ async function loadDays() {
     else if (d.hasDraft) tags.push(["초안", ""]);
     if (d.hasContent) tags.push(["content.md", "ok"]);
     li.innerHTML =
-      `<span class="date">${d.date}</span>` +
+      `<span class="date">${d.label ?? d.date}</span>` +
       tags.map(([t, c]) => `<span class="tag ${c}">${t}</span>`).join("") +
       (d.hasContent ? `<a class="go" href="${SITE_URL}${d.date}/" target="_blank" rel="noopener" title="웹사이트에서 보기">사이트 ↗</a>` : "") +
       (d.subtitle ? `<span class="sub">${escapeHtml(d.subtitle)}</span>` : "");
@@ -264,17 +264,18 @@ function escapeHtml(s) {
   return String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 }
 
-async function newDay() {
+async function newDay(another = false) {
   const date = $("new-date").value;
   if (!date) return toast("날짜를 고르세요.");
-  busy($("btn-new-day"), true);
+  const btn = $(another ? "btn-another-day" : "btn-new-day");
+  busy(btn, true);
   try {
-    await api("/api/days", { method: "POST", body: { date } });
-    await openDay(date);
+    const { day } = await api("/api/days", { method: "POST", body: { date, another } });
+    await openDay(day.date);
   } catch (e) {
     toast(e.message);
   } finally {
-    busy($("btn-new-day"), false);
+    busy(btn, false);
   }
 }
 
@@ -290,7 +291,7 @@ async function openDay(date) {
   closeCrop();
   $("photo-msg").textContent = "";
   $("chat-msg").textContent = "";
-  $("title").innerHTML = `${date} <small>신앙의 이정표</small>`;
+  $("title").innerHTML = `${date.length > 10 ? `${date.slice(0, 10)} <small>(${date.slice(11)})</small>` : date} <small>신앙의 이정표</small>`;
   show("view-day");
   await refreshDay();
 }
@@ -740,8 +741,10 @@ function renderReadings(r) {
     title.textContent = "말씀을 아직 불러오지 않았습니다.";
     return;
   }
+  const manual = Boolean(r.manual) && !r.readings?.length; // 같은 날 하나 더: 미사 독서 없이 직접 더한 말씀만
+  $("btn-readings").hidden = manual;
   const dot = r.color ? `<span class="color" style="background:${LITURGY_COLORS[r.color] ?? "transparent"}" title="${escapeHtml(r.color)}"></span>` : "";
-  title.innerHTML = `${dot}${escapeHtml(r.title || "전례일 모름")}`;
+  title.innerHTML = manual ? "같은 날 하나 더 — 말씀은 아래에서 직접 더합니다" : `${dot}${escapeHtml(r.title || "전례일 모름")}`;
   for (const x of r.readings ?? []) {
     const d = document.createElement("details");
     d.innerHTML =
@@ -1279,7 +1282,8 @@ function wire() {
     loadDays().catch((e) => toast(e.message));
   });
   $("btn-refresh-days").addEventListener("click", () => loadDays().catch((e) => toast(e.message)));
-  $("btn-new-day").addEventListener("click", newDay);
+  $("btn-new-day").addEventListener("click", () => newDay(false));
+  $("btn-another-day").addEventListener("click", () => newDay(true));
   $("btn-save-conv").addEventListener("click", saveConversation);
   $("conversation").addEventListener("input", renderConvCount);
   $("file-conv").addEventListener("change", (e) => {

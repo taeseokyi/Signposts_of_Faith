@@ -162,11 +162,11 @@ Start-ScheduledTask    -TaskPath '\tsyi\' -TaskName 'Signposts helper'
 | POST | `/api/login` | `{token}` → 쿠키. `<img>` 와 미리보기 페이지용 |
 | GET | `/api/bible/books` | 성경 책 목록 (약칭, 이름, 구약·신약) — 말씀 더하기의 책 고르기 |
 | GET | `/api/days` | 날짜 폴더 목록과 상태 |
-| POST | `/api/days` | `{date}` 새 날짜 폴더 |
+| POST | `/api/days` | `{date, another?}` 새 날짜 폴더. `another` 면 같은 날 하나 더 (`YYYY-MM-DD-2` …, 미사 독서는 가져오지 않고 더한 말씀으로 묵상) |
 | GET | `/api/days/:date` | 대화(`chat`), 사진 판독(`scrap`), 사진 목록, content.md, 초안, 기록, 작업 상태 |
 | POST | `/api/days/:date/chat` | `{text}` 한 턴. NDJSON 스트림: `{delta}`… `{status}`… `{done, text, costUsd, chatTurns}` 또는 `{error}`. 지난 세션을 잇지 못하면 앞 대화를 이어 붙여 새 세션으로 잇는다 |
 | GET / DELETE | `/api/days/:date/chat` | 대화 보기 / 모두 지우기 (`chat.json` 과 `대화.md`) |
-| GET | `/api/days/:date/readings` | 굿뉴스 매일미사에서 그날 말씀 (`?refresh=1` 이면 다시 가져옴. 더한 말씀 `extra` 는 남김) |
+| GET | `/api/days/:date/readings` | 굿뉴스 매일미사에서 그날 말씀 (`?refresh=1` 이면 다시 가져옴. 더한 말씀 `extra` 는 남김). 같은 날 둘째 글(`-2`)은 가져오지 않고 빈 틀(`manual`) |
 | POST | `/api/days/:date/readings/extra` | `{ref:"요한 15,5-8"}` 굿뉴스 성경에서 구절을 가져와 그날 말씀에 더함 (`bible.mjs`) → `{readings, added}` |
 | DELETE | `/api/days/:date/readings/extra/:ref` | 더한 구절 빼기 |
 | PUT | `/api/days/:date/conversation` | `{text}` → `대화.md` 붙여 넣기 (비우면 지움) |

@@ -26,7 +26,7 @@ import { dirname, extname, join, normalize, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { timingSafeEqual } from "node:crypto";
 
-import { Days, DAY_RE, subtitleOf, milestoneTitles } from "./days.mjs";
+import { Days, DAY_RE, subtitleOf, milestoneTitles, dateOf, seqOf, labelOf, emptyReadings } from "./days.mjs";
 import { ClaudeRunner } from "./runner.mjs";
 import { buildDraftPrompt, buildScrapPrompt, chatContext, chatSystemPrompt, RECORD_EXAMPLE_FALLBACK, SCRAP_SCHEMA, chatOpening, chatCatchUp } from "./prompt.mjs";
 import { fetchPassage, bookList } from "./bible.mjs";
@@ -284,7 +284,7 @@ async function runJob(date) {
   await step("publish", "run");
   let result;
   try {
-    result = await publish(date, { message: extend ? `${date} 묵상: 이정표 ${job.extendFrom}개 → ${check.milestones}개` : "" });
+    result = await publish(date, { message: extend ? `${labelOf(date)} 묵상: 이정표 ${job.extendFrom}개 → ${check.milestones}개` : "" });
   } catch (error) {
     await step("publish", "fail", error.message);
     job = await days.saveJob(date, { ...job, status: "error", error: error.message, costUsd: cost || null, finishedAt: new Date().toISOString() });
@@ -489,7 +489,7 @@ async function publish(date, { message, push = true, withRecord = true } = {}) {
     err.status = 409;
     throw err;
   }
-  const msg = (message || "").trim() || `${date} 묵상: ${subtitle}`;
+  const msg = (message || "").trim() || `${labelOf(date)} 묵상: ${subtitle}`;
   await git(["commit", "-m", msg], { cwd: REPO });
   const head = (await git(["log", "-1", "--format=%h %s"], { cwd: REPO })).trim();
   let pushed = false;
@@ -704,11 +704,12 @@ const handler = async (req, res) => {
 
     if (req.method === "POST" && path === "/api/days") {
       const body = await readJson(req);
-      if (!DAY_RE.test(body.date ?? "")) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(body.date ?? "")) {
         send(res, 400, { error: "date 는 YYYY-MM-DD 형식이어야 합니다." });
         return;
       }
-      send(res, 201, { day: await days.create(body.date) });
+      // another: 같은 날 하나 더 (YYYY-MM-DD-2 …). 그날 미사 독서는 가져오지 않고 사용자가 더한 말씀으로 묵상한다. 그 밖은 같다.
+      send(res, 201, { day: body.another ? await days.createAnother(body.date) : await days.create(body.date) });
       return;
     }
 
@@ -728,7 +729,7 @@ const handler = async (req, res) => {
       return;
     }
 
-    const m = /^\/api\/days\/(\d{4}-\d{2}-\d{2})(?:\/([\w-]+))?(?:\/(.+))?$/.exec(path);
+    const m = /^\/api\/days\/(\d{4}-\d{2}-\d{2}(?:-\d+)?)(?:\/([\w-]+))?(?:\/(.+))?$/.exec(path);
     if (!m) {
       send(res, 404, { error: "없는 주소입니다." });
       return;
@@ -899,10 +900,15 @@ const handler = async (req, res) => {
       // 굿뉴스 매일미사에서 그날 말씀을 가져옵니다. 한 번 가져오면 readings.json 에 두고, ?refresh=1 이면 다시 가져옵니다.
       const refresh = url.searchParams.get("refresh") === "1";
       const had = await days.readings(date);
+      if (seqOf(date) > 1) {
+        // 같은 날 하나 더: 미사 독서를 가져오지 않는다. 말씀은 사용자가 직접 더한다.
+        send(res, 200, { readings: had ?? (await days.saveReadings(date, emptyReadings(date))) });
+        return;
+      }
       let readings = refresh ? null : had;
       if (!readings) {
         try {
-          readings = await days.saveReadings(date, { ...(await fetchReadings(date)), extra: had?.extra ?? [] });
+          readings = await days.saveReadings(date, { ...(await fetchReadings(dateOf(date))), extra: had?.extra ?? [] });
           console.log(`[${date}] 말씀 가져옴 · ${readingsSummary(readings)}`);
         } catch (e) {
           send(res, 502, { error: `굿뉴스에서 말씀을 가져오지 못했습니다: ${e.message}` });

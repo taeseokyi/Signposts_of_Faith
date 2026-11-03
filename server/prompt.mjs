@@ -61,11 +61,13 @@ export function buildDraftPrompt({
   extend = null,
 }) {
   const parts = [];
+  const day = date.slice(0, 10); // 달력 날짜. date 는 폴더 이름 (같은 날 둘째 글은 YYYY-MM-DD-2)
+  const another = date.length > 10;
 
-  parts.push(`너는 「신앙의 이정표」 작업의 정리 담당이다. ${date} 의 묵상을 WORKFLOW.md 의 기준에 맞춰
+  parts.push(`너는 「신앙의 이정표」 작업의 정리 담당이다. ${day} 의 묵상을 WORKFLOW.md 의 기준에 맞춰
 content.md 초안으로 정리한다. 글의 주인은 사용자이고, 노트에 적힌 사용자의 결론이 글의 중심이다.
 너의 설명은 그것을 뒷받침하는 자리에 둔다.
-${extend ? extendIntro(date, extend) : ""}
+${another ? anotherIntro(date) : ""}${extend ? extendIntro(date, extend) : ""}
 ## 먼저 읽을 것 (Read 도구)
 
 1. WORKFLOW.md — 2장(대화 원칙), 3장(글의 구성과 분량, "대화가 남아 있지 않은 날"), 5장 "빌드"의 content.md 형식 설명
@@ -82,14 +84,14 @@ ${conversationPath
 - 묵상 노트 사진 (Read 로 하나씩 열어 손글씨를 읽는다. 그날 글이 이어지는 차례로 나열했다):
 ${list(photoPaths)}
 - 머리말 "노트사진:" 에 적을 공개용 사진 파일 이름: ${publicPhotos.length ? publicPhotos.join(", ") : "(없음 — 빈 칸으로 둔다)"}
-${readings ? `- 이날의 말씀 (굿뉴스 매일미사에서 가져옴): ${readingsSummary(readings)}. 본문은 대화 원문 첫머리 "## 말씀" 절에 있다. 머리말의 전례일·독서·복음장절은 이것을 따른다.` : "- 이날의 말씀: 가져온 것이 없다. 대화와 노트에서 전례일과 장절을 찾는다."}
+${readings?.readings?.length ? `- 이날의 말씀 (굿뉴스 매일미사에서 가져옴): ${readingsSummary(readings)}. 본문은 대화 원문 첫머리 "## 말씀" 절에 있다. 머리말의 전례일·독서·복음장절은 이것을 따른다.` : another ? "- 이 글의 말씀: 아래 \"사용자가 더한 말씀\" 절. 머리말의 독서·복음장절은 그것으로 채운다." : "- 이날의 말씀: 가져온 것이 없다. 대화와 노트에서 전례일과 장절을 찾는다."}
 
-사진 한 장에 여러 날이 섞여 있을 수 있다. 독서 장절로 ${date} 의 부분을 찾아 그 부분만 쓴다.
+사진 한 장에 여러 날이 섞여 있을 수 있다. 독서 장절로 ${day} 의 부분을 찾아 그 부분만 쓴다.
 노트에 흐름도(화살표로 이어진 낱말들)와 빨간 글씨·밑줄 메모가 있으면 그것이 "나의 묵상 흐름"과 결론이다.
 
 ## 지켜야 할 것
 
-- 머리말: 날짜는 반드시 ${date}. 전례일·전례시기·부제·복음장절·독서·태그를 채운다. 공개: 예. 게시번호와 게시주소는 빈 칸.
+- 머리말: 날짜는 반드시 ${day}. 전례일·전례시기·부제·복음장절·독서·태그를 채운다. 공개: 예. 게시번호와 게시주소는 빈 칸.
   전례시기는 연중/대림/사순/성탄/부활/성령강림/순교자 가운데 하나.
 - 부제는 그날 이정표의 중심을 한 마디로. 게시글 제목 "[MM.DD.요일] 신앙의 이정표 - 부제 (복음장절)" 이 55자를 넘지 않게.
 - 이정표는 대화의 물음 수만큼(8개 이하). 각 이정표에 "물음:", 본문 문단, "기억:", "한 줄:" 이 모두 있어야 한다.
@@ -102,7 +104,7 @@ ${readings ? `- 이날의 말씀 (굿뉴스 매일미사에서 가져옴): ${rea
 - 가르치거나 판단하는 어조를 쓰지 않는다. 실명, 본당 이름, 가족 사정 같은 개인 정보는 쓰지 않는다 (사용자의 세례명은 써도 된다).
   노트에 개인적인 결심이 있으면 일반적인 표현으로 바꾸고, review 에 그 사실을 적는다.
 - 교회 가르침으로 단정하기 어려운 것은 "내 생각"임이 드러나는 문장으로 쓴다. 교리서 항 번호와 교부·성인 인용은 확실한 것만 쓰고, 확신이 없으면 review 에 올린다.
-- 날짜는 독서 장절로 정한다. 대화나 노트의 독서가 ${date} 의 전례와 맞지 않아 보이면 content_md 의 날짜는 ${date} 로 두되 review 첫 줄에 그 사실을 적는다.
+${another ? "- 이 글은 그날 전례의 독서가 아니라 사용자가 더한 말씀으로 묵상한 글이다. 독서·전례 불일치는 문제가 아니다." : `- 날짜는 독서 장절로 정한다. 대화나 노트의 독서가 ${day} 의 전례와 맞지 않아 보이면 content_md 의 날짜는 ${day} 로 두되 review 첫 줄에 그 사실을 적는다.`}
 - 마크다운은 content_template.md 에 있는 것만 쓴다: 섹션 "# ", 이정표 "## ", "> " 구절, "- " 목록, "**굵게**", "*기울임*". 표, 링크, 코드, 그 밖의 문법은 쓰지 않는다.
 
 ## record_md
@@ -115,7 +117,7 @@ ${recordExample}
 
 review: 사람이 확인해야 할 점을 한 줄씩. 전례일 이름과 주간, 독서·복음 장절, 교리서 항 번호, 인용 출처와 문구, 노트에서 읽기 어려웠던 글자, 개인 정보로 보이는 대목. 확인할 것이 없으면 빈 배열.
 hold: 이 글을 사람이 보지 않고 바로 발행해도 되는지. 보통은 false. 다음 가운데 하나면 true 로 하고 hold_reason 에 까닭을 적는다.
-  - 대화나 노트의 독서·복음이 ${date} 의 전례와 맞지 않아 보인다 (날짜가 틀렸을 가능성)
+${another ? "  - (둘째 글은 독서·전례 불일치로 멈추지 않는다)" : `  - 대화나 노트의 독서·복음이 ${day} 의 전례와 맞지 않아 보인다 (날짜가 틀렸을 가능성)`}
   - 실명, 본당 이름, 가족 사정 같은 개인 정보가 글에 남았을 수 있다
   - 노트 사진을 거의 읽지 못해 결론을 짐작으로 썼다`);
 
@@ -153,6 +155,20 @@ ${retry.draft}
 지정된 JSON 스키마대로만 답한다. content_md 는 "---" 머리말로 시작하는 content.md 전체 내용이다.`);
 
   return parts.join("\n\n");
+}
+
+function anotherIntro(date) {
+  const day = date.slice(0, 10);
+  return `
+## 같은 날 하나 더
+
+이 글은 ${day} 의 ${date.slice(11)}번째 글이다 (폴더 ${date}/). 그날 전례의 독서로 쓴 첫 글과 별개로, 사용자가 다른 자리에서 나눈 대화와
+직접 더한 말씀으로 묵상한 글이다. 그날 미사 독서는 가져오지 않았다. 그 밖의 형식과 기준은 첫 글과 똑같다.
+- 머리말 전례일: ${day}/content.md 가 있으면 그 전례일을 그대로 쓴다 (Read 로 본다). 없으면 대화에서 알 수 있는 것을 쓰고, 모르면 "연중 시기"라고만 적는다.
+- 머리말 독서: 사용자가 더한 말씀을 "- 말씀 장절" 꼴로 모두 적는다. 복음장절: 더한 말씀 가운데 복음서 구절, 없으면 첫 더한 말씀의 장절.
+- 여는 말씀 구절은 더한 말씀에서 고른다. 대화가 다른 AI 와 나눈 것이어도 (You/모델 이름 표식) 사용자의 물음이 곧 이정표다.
+- 웹사이트 주소는 https://taeseokyi.github.io/Signposts_of_Faith/${date}/ 이고, record_md 제목은 "### ${date} · 전례일" 로 시작한다.
+`;
 }
 
 function extendIntro(date, extend) {
@@ -208,7 +224,7 @@ export const RECORD_EXAMPLE_FALLBACK = `### 2026-10-23 · 연중 제29주간 금
 export function chatSystemPrompt({ date }) {
   return `너는 「신앙의 이정표」 묵상 대화의 상대다. 사용자는 가톨릭 신자이고, 그날의 독서와 복음으로 묵상하며
 삶의 물음을 너에게 묻는다. 이 대화는 그대로 저장되어(대화.md) 글 「신앙의 이정표」의 바탕이 된다.
-사용자의 물음 하나가 이정표 하나가 되므로, 물음 하나에 답 하나를 또렷하게 한다. 오늘 묵상하는 날짜는 ${date} 다.
+사용자의 물음 하나가 이정표 하나가 되므로, 물음 하나에 답 하나를 또렷하게 한다. 오늘 묵상하는 날짜는 ${date.slice(0, 10)} 다.${date.length > 10 ? " 이 글은 같은 날의 또 다른 묵상이라 그날 미사 독서 대신 사용자가 직접 더한 말씀으로 묵상한다." : ""}
 
 ## 대화 원칙 (WORKFLOW.md 2장)
 
@@ -234,7 +250,7 @@ export function chatOpening({ readings }) {
   const head = `오늘 독서와 복음으로 묵상하려고 해. 답변에 대한 근거는 항상 마지막에 정리해 줘.
 교과서적인 설명보다 내 삶의 물음에 답해 주고, 족쇄처럼 무거워지지 않게 해 줘.
 정리한 내용은 「신앙의 이정표」로 만들어 웹사이트에 올릴 거야.`;
-  return readings?.readings?.length ? `${head}\n\n${readingsBlock(readings)}\n\n첫 번째 물음:` : head;
+  return readings?.readings?.length || readings?.extra?.length ? `${head}\n\n${readingsBlock(readings)}\n\n첫 번째 물음:` : head;
 }
 
 export function chatContext({ date, photoPaths, publicPhotos, newExtra = [], article = null }) {
@@ -336,6 +352,6 @@ ${date} 는 ${monthDay(date)} 이다. 날짜 표시가 없으면 장절로 추�
 }
 
 function monthDay(date) {
-  const [, m, d] = date.split("-").map(Number);
+  const [, m, d] = date.slice(0, 10).split("-").map(Number);
   return `${m}월 ${d}일`;
 }

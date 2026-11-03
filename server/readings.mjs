@@ -116,6 +116,6 @@ export function readingsBlock(r) {
   const parts = [];
   if (r.title) parts.push(`전례일: ${r.title}`);
   for (const x of r.readings) parts.push(`${x.kind} (${x.ref})\n${x.text}`);
-  for (const x of r.extra ?? []) parts.push(`더한 말씀 (${x.ref}) — 묵상하다 떠올라 사용자가 더한 구절\n${x.text}`);
+  for (const x of r.extra ?? []) parts.push(`${r.readings?.length ? "더한 말씀" : "말씀"} (${x.ref})${r.readings?.length ? " — 묵상하다 떠올라 사용자가 더한 구절" : ""}\n${x.text}`);
   return parts.join("\n\n");
 }

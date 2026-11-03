@@ -19,7 +19,25 @@ import { mkdir, readFile, writeFile, readdir, rm, stat, copyFile, rename } from 
 import { join } from "node:path";
 import { readingsBlock } from "./readings.mjs";
 
-export const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
+// 날짜 폴더 이름: YYYY-MM-DD (그날 첫 글) 또는 YYYY-MM-DD-2, -3 … (같은 날 하나 더: 사용자가 직접 더한 말씀으로 묵상한 글)
+export const DAY_RE = /^\d{4}-\d{2}-\d{2}(?:-\d+)?$/;
+
+/** 폴더 이름에서 달력 날짜만. "2026-11-03-2" → "2026-11-03" */
+export function dateOf(id) {
+  return String(id).slice(0, 10);
+}
+
+/** 같은 날 몇 번째 글인지. 첫 글은 1. */
+export function seqOf(id) {
+  const m = /-(\d+)$/.exec(String(id).slice(10));
+  return m ? Number(m[1]) : 1;
+}
+
+/** 사람에게 보이는 이름. "2026-11-03-2" → "2026-11-03 (2)" */
+export function labelOf(id) {
+  const n = seqOf(id);
+  return n > 1 ? `${dateOf(id)} (${n})` : dateOf(id);
+}
 const IMAGE_RE = /\.(jpe?g|png|webp|heic)$/i;
 const EXT = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/heic": "heic" };
 
@@ -103,7 +121,7 @@ export class Days {
 
   /** 묵상하다 떠오른 구절을 그날 말씀에 더합니다. 같은 장절이 이미 있으면 그대로 둡니다. */
   async addExtra(date, passage) {
-    const r = (await this.readings(date)) ?? { date, title: "", color: "", readings: [] };
+    const r = (await this.readings(date)) ?? emptyReadings(date);
     const extra = r.extra ?? [];
     if (!extra.some((x) => x.ref === passage.ref)) extra.push({ ...passage, addedAt: new Date().toISOString() });
     return this.saveReadings(date, { ...r, extra });
@@ -129,6 +147,15 @@ export class Days {
     return this.summary(date);
   }
 
+  /** 같은 날 하나 더: 그 날짜의 폴더들 뒤에 -2, -3 … 으로 새 폴더를 만듭니다. 첫 글 폴더가 없으면 그것부터 만듭니다. */
+  async createAnother(date) {
+    const day = dateOf(date);
+    if (!(await this.exists(day))) return this.create(day);
+    const entries = await readdir(this.repo, { withFileTypes: true }).catch(() => []);
+    const seqs = entries.filter((e) => e.isDirectory() && e.name.startsWith(day) && DAY_RE.test(e.name)).map((e) => seqOf(e.name));
+    return this.create(`${day}-${Math.max(1, ...seqs) + 1}`);
+  }
+
   async exists(date) {
     return exists(this.dir(date));
   }
@@ -139,6 +166,9 @@ export class Days {
     const chat = await this.chat(date);
     return {
       date,
+      day: dateOf(date),
+      seq: seqOf(date),
+      label: labelOf(date),
       hasConversation: await exists(this.conversationPath(date)),
       chatTurns: chat.messages.filter((m) => m.role === "user").length,
       milestones: content ? countMilestones(content) : null,
@@ -405,10 +435,15 @@ export class Days {
   }
 }
 
+/** 말씀을 가져오지 않는 글(같은 날 하나 더)의 빈 틀. 사용자가 더한 말씀(extra)만 채워진다. */
+export function emptyReadings(date) {
+  return { date: dateOf(date), title: "", color: "", readings: [], extra: [], manual: true };
+}
+
 /** 화면 안 대화를 대화.md 형식으로. 사용자 차례는 "## 나", claude 차례는 "## Claude". 말씀이 있으면 첫머리에 "## 말씀" 절. */
 export function conversationMarkdown(date, messages, readings = null, pasted = "") {
   const parts = [`# ${date} 묵상 대화 (노트북 도우미에서 claude 와 나눔)`];
-  if (readings?.readings?.length) parts.push(`## 말씀 (굿뉴스 매일미사에서 가져옴)\n\n${readingsBlock(readings)}`);
+  if (readings?.readings?.length || readings?.extra?.length) parts.push(`## 말씀${readings.readings?.length ? " (굿뉴스 매일미사에서 가져옴)" : " (직접 더한 말씀)"}\n\n${readingsBlock(readings)}`);
   for (const m of messages) {
     parts.push(`## ${m.role === "user" ? "나" : "Claude"}\n\n${String(m.text).trim()}`);
   }

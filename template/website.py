@@ -16,7 +16,7 @@ import print_pdf
 from content import date_label, inline, lines_html
 
 HERE = Path(__file__).resolve().parent
-DAY_RE = re.compile(r'^\d{4}-\d{2}-\d{2}$')
+DAY_RE = re.compile(r'^\d{4}-\d{2}-\d{2}(?:-\d+)?$')  # 같은 날 하나 더는 -2, -3 …
 MARKER = '.signposts-site'  # 이 표시가 있는 폴더만 지우고 다시 만든다
 
 SITE_TITLE = '신앙의 이정표'
@@ -49,8 +49,9 @@ def collect(root, log=print):
         if errors:
             log(f'  [건너뜀] {folder.name}: content.md 오류 {len(errors)}개 — {errors[0]}')
             continue
+        data['slug'] = folder.name  # 웹사이트 경로. 같은 날 둘째 글은 YYYY-MM-DD-2
         entries.append(data)
-    return sorted(entries, key=lambda d: d['date'], reverse=True)
+    return sorted(entries, key=lambda d: d['slug'], reverse=True)
 
 
 def _variables(c):
@@ -77,7 +78,8 @@ def _plain(text):
 
 def _day_label(data):
     d = data['date']
-    return f"{d.year}. {d.month}. {d.day}. ({data['weekday']})"
+    seq = data.get('slug', '')[11:]
+    return f"{d.year}. {d.month}. {d.day}. ({data['weekday']})" + (f' · {seq}번째 글' if seq else '')
 
 
 def day_page(data, newer, older, pdf_href):
@@ -102,7 +104,7 @@ def day_page(data, newer, older, pdf_href):
     def nav(entry, label, cls):
         if entry is None:
             return f'<span class="{cls}"></span>'
-        return (f'<a class="{cls}" href="../{entry["date"].isoformat()}/">'
+        return (f'<a class="{cls}" href="../{entry["slug"]}/">'
                 f'<small>{label}</small>{inline(entry["meta"]["부제"])}</a>')
 
     foot = (
@@ -131,7 +133,7 @@ def index_page(entries):
     for data in entries:
         meta = data['meta']
         items.append(
-            f'<li class="entry"><a href="{data["date"].isoformat()}/">'
+            f'<li class="entry"><a href="{data["slug"]}/">'
             f'<span class="date">{_day_label(data)} · {inline(meta["전례일"])}</span>'
             f'<span class="title">{inline(meta["부제"])}</span>'
             f'<span class="meta">{inline(meta["복음장절"])} · 이정표 {len(data["milestones"])}개</span>'
@@ -166,7 +168,7 @@ def build_site(root, out, with_pdf=True, log=print):
 
     entries = collect(root, log)
     for i, data in enumerate(entries):
-        day = data['date'].isoformat()
+        day = data['slug']
         folder = out / day
         folder.mkdir()
         pdf_href = None

@@ -34,7 +34,7 @@ def report(problems):
 
 
 def cmd_new(day):
-    date = datetime.date.fromisoformat(day)
+    date = datetime.date.fromisoformat(day[:10])  # 같은 날 하나 더는 YYYY-MM-DD-2
     folder = ROOT / day
     target = folder / 'content.md'
     if target.exists():
@@ -62,7 +62,7 @@ def cmd_check(target, as_day=None, as_json=False):
         if not source.is_file():
             raise content.ContentError(f'파일이 없습니다: {source}')
         data = content.parse(source, folder=folder)
-        if data['date'].isoformat() != day:
+        if data['date'].isoformat() != day[:10]:
             data['problems'].append(('오류', f'머리말 날짜({data["date"]})가 폴더 이름({day})과 다릅니다.'))
         result['problems'] = [list(p) for p in data['problems']]
         result['milestones'] = len(data['milestones'])
@@ -93,7 +93,7 @@ def cmd_build(day, board_only=False, keep_html=False):
 
     print(f'읽는 중: {source.relative_to(ROOT)}')
     data = content.parse(source)
-    if data['date'].isoformat() != day:
+    if data['date'].isoformat() != day[:10]:
         data['problems'].append(('오류', f'머리말 날짜({data["date"]})가 폴더 이름({day})과 다릅니다.'))
     if report(data['problems']):
         sys.exit('content.md를 고친 뒤 다시 실행하세요.')
