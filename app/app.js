@@ -109,7 +109,7 @@ function jobOutcome(date, job) {
   if (job.status === "hold") return { title: `${date} 멈춤 · 확인이 필요합니다`, body: job.holdReason ?? "", kind: "warn" };
   if (job.status === "error") return { title: `${date} ${publish ? "발행하지 못했습니다" : "초안을 만들지 못했습니다"}`, body: job.error ?? "", kind: "bad" };
   if (!publish) return { title: `${date} 초안을 만들었습니다`, body: job.title ?? "", kind: "ok" };
-  if (job.publish?.pushed) return { title: `${date} 발행했습니다`, body: job.publish.subject ?? "", kind: "ok" };
+  if (job.publish?.pushed) return { title: `${date} 발행 완료`, body: "", kind: "ok" };
   if (job.publish) return { title: `${date} 커밋만 됐습니다`, body: job.publish.pushError ?? "push 가 안 됐습니다.", kind: "warn" };
   return { title: `${date} content.md 까지 만들었습니다`, body: "발행 전에 멈추기를 골라 두었습니다.", kind: "warn" };
 }
@@ -448,7 +448,8 @@ function renderSteps(ol, job, big) {
     const li = document.createElement("li");
     li.className = st.status;
     const icon = STEP_ICON[st.status] ?? "○";
-    const detail = st.detail ? `<span class="d">${escapeHtml(st.detail)}</span>` : "";
+    const text = st.key === "publish" && st.status === "ok" ? "완료" : st.detail;
+    const detail = text ? `<span class="d">${escapeHtml(text)}</span>` : "";
     li.innerHTML = big
       ? `<span class="i">${icon}</span><span class="t">${escapeHtml(st.label)}${detail}</span>`
       : `${icon} ${escapeHtml(st.label)}` + (detail ? `<br>${detail}` : "");
@@ -492,7 +493,7 @@ function renderAutoModal(job) {
       title.className = "bad";
       msg.textContent = job.error ?? "";
     } else if (job.status === "done" && job.publish?.pushed) {
-      title.textContent = "발행했습니다";
+      title.textContent = "발행 완료";
       title.className = "ok";
       msg.innerHTML = publishedNote(job);
     } else if (job.status === "done") {
@@ -534,9 +535,9 @@ function setExtend(value) {
   $("extend-draft").checked = value;
 }
 
-/** 발행 뒤 안내: 발행했습니다 + 웹사이트 링크. */
+/** 발행 뒤 안내: 웹사이트 링크만. (완료는 배지와 단계에 보인다) */
 function publishedNote(job) {
-  return `「${escapeHtml(job.publish.subject ?? "")}」 발행했습니다. <a href="${job.publish.url}" target="_blank" rel="noopener">웹사이트의 이 날 ↗</a>`;
+  return `<a href="${job.publish.url}" target="_blank" rel="noopener">웹사이트의 이 날 ↗</a>`;
 }
 
 function renderAuto(day) {
@@ -1211,9 +1212,8 @@ async function publish() {
     const out = $("publish-result");
     out.hidden = false;
     out.innerHTML =
-      `「${escapeHtml(r.subject ?? "")}」 (${r.files.length}개 파일)<br>` +
       (r.pushed
-        ? `발행했습니다. <a href="${r.url}" target="_blank" rel="noopener">웹사이트의 이 날 ↗</a>`
+        ? `완료 · <a href="${r.url}" target="_blank" rel="noopener">웹사이트의 이 날 ↗</a>`
         : `<span style="color:var(--bad)">push 되지 않았습니다:</span> ${escapeHtml(r.pushError ?? "")}<br>노트북에서 <code>git push</code> 를 직접 해 주세요.`);
     $("publish-msg").textContent = "";
     await gitStatus();
