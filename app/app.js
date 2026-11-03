@@ -109,7 +109,7 @@ function jobOutcome(date, job) {
   if (job.status === "hold") return { title: `${date} 멈춤 · 확인이 필요합니다`, body: job.holdReason ?? "", kind: "warn" };
   if (job.status === "error") return { title: `${date} ${publish ? "발행하지 못했습니다" : "초안을 만들지 못했습니다"}`, body: job.error ?? "", kind: "bad" };
   if (!publish) return { title: `${date} 초안을 만들었습니다`, body: job.title ?? "", kind: "ok" };
-  if (job.publish?.pushed) return { title: `${date} 발행했습니다`, body: job.publish.commit ?? "", kind: "ok" };
+  if (job.publish?.pushed) return { title: `${date} 발행했습니다`, body: job.publish.subject ?? "", kind: "ok" };
   if (job.publish) return { title: `${date} 커밋만 됐습니다`, body: job.publish.pushError ?? "push 가 안 됐습니다.", kind: "warn" };
   return { title: `${date} content.md 까지 만들었습니다`, body: "발행 전에 멈추기를 골라 두었습니다.", kind: "warn" };
 }
@@ -349,7 +349,6 @@ function renderDay(day) {
   // 물음 하나가 이정표 하나. 개수는 글(content.md)이 있을 때 그 안의 이정표 수로 보이고, 없으면 개수를 보이지 않는다.
   const count = day.hasContent && day.milestones ? `이정표 ${day.milestones}개` : "";
   setBadge("b-conv", count || (turns ? "대화 있음" : day.hasConversation ? "붙여 넣음" : "없음"), day.hasConversation ? "ok" : "");
-  if (day.chat?.costUsd) $("chat-msg").textContent = `지금까지 약 $${day.chat.costUsd.toFixed(2)}`;
 
   // 2. 사진
   setBadge("b-notes", `원본 ${day.notes.length} · 공개 ${day.publicPhotos.length}`, day.notes.length ? "ok" : "");
@@ -391,7 +390,7 @@ function renderDay(day) {
       const errors = (job.problems ?? []).filter(([l]) => l === "오류").length;
       setBadge("b-draft", errors ? `초안 (오류 ${errors})` : job.extend ? "덧붙인 초안" : "초안 완료", errors ? "warn" : "ok");
       const grew = job.extend && job.extendFrom != null && day.draftMilestones != null ? `이정표 ${job.extendFrom}개 → ${day.draftMilestones}개` : "";
-      $("draft-msg").textContent = [job.title ? `제목: ${job.title}` : "", grew, job.costUsd ? `약 $${job.costUsd.toFixed(2)}` : ""].filter(Boolean).join(" · ");
+      $("draft-msg").textContent = [job.title ? `제목: ${job.title}` : "", grew].filter(Boolean).join(" · ");
     } else {
       setBadge("b-draft", "아직", "");
       $("draft-msg").textContent = "";
@@ -495,7 +494,7 @@ function renderAutoModal(job) {
     } else if (job.status === "done" && job.publish?.pushed) {
       title.textContent = "발행했습니다";
       title.className = "ok";
-      msg.innerHTML = `커밋 <code>${escapeHtml(job.publish.commit)}</code> · 몇 분 뒤 <a href="${job.publish.url}" target="_blank" rel="noopener">웹사이트의 이 날</a>에 실립니다.`;
+      msg.innerHTML = publishedNote(job);
     } else if (job.status === "done") {
       title.textContent = job.publish ? "커밋만 됐습니다" : "content.md 까지 만들었습니다";
       title.className = "warn";
@@ -533,6 +532,14 @@ function extendChecked() {
 function setExtend(value) {
   $("extend-auto").checked = value;
   $("extend-draft").checked = value;
+}
+
+/** 발행 뒤 안내. 끝난 지 10분 안이면 "몇 분 뒤 실립니다", 그 뒤로는 "실려 있습니다" (웹사이트 반영은 push 뒤 몇 분 걸린다). */
+function publishedNote(job) {
+  const link = `<a href="${job.publish.url}" target="_blank" rel="noopener">웹사이트의 이 날 ↗</a>`;
+  const t = Date.parse(job.finishedAt ?? "");
+  const recent = Number.isFinite(t) && Date.now() - t < 10 * 60 * 1000;
+  return `「${escapeHtml(job.publish.subject ?? "")}」 발행했습니다. ${recent ? `몇 분 뒤 ${link}에 실립니다.` : `${link}에 실려 있습니다.`}`;
 }
 
 function renderAuto(day) {
@@ -585,8 +592,7 @@ function renderAuto(day) {
   } else if (job.status === "done" && job.publish) {
     setBadge("b-auto", job.publish.pushed ? "발행 완료" : "커밋만 됨", job.publish.pushed ? "ok" : "warn");
     msg.innerHTML = job.publish.pushed
-      ? `커밋 <code>${escapeHtml(job.publish.commit)}</code> · 몇 분 뒤 <a href="${job.publish.url}" target="_blank" rel="noopener">웹사이트의 이 날 ↗</a>에 실립니다.` +
-        (job.costUsd ? ` · 약 $${job.costUsd.toFixed(2)}` : "")
+      ? publishedNote(job)
       : `커밋은 됐지만 push 가 안 됐습니다: ${escapeHtml(job.publish.pushError ?? "")} — 5단계에서 git 상태를 보고 노트북에서 push 하세요.`;
   } else {
     setBadge("b-auto", "", "");
@@ -890,7 +896,6 @@ async function sendChat() {
         bubble.innerHTML = (acc ? renderMarkdown(acc) : "") + `<span class="status">${escapeHtml(ev.status)}</span>`;
       } else if (ev.done) {
         acc = ev.text || acc;
-        if (ev.costUsd) $("chat-msg").textContent = `이번 답 약 $${ev.costUsd.toFixed(2)}`;
       } else if (ev.error) {
         error = ev.error;
       }
@@ -1209,7 +1214,7 @@ async function publish() {
     const out = $("publish-result");
     out.hidden = false;
     out.innerHTML =
-      `커밋 <code>${escapeHtml(r.commit)}</code> (${r.files.length}개 파일)<br>` +
+      `「${escapeHtml(r.subject ?? "")}」 (${r.files.length}개 파일)<br>` +
       (r.pushed
         ? `push 완료. 몇 분 뒤 <a href="${r.url}" target="_blank" rel="noopener">웹사이트의 이 날 ↗</a>에 실립니다.`
         : `<span style="color:var(--bad)">push 되지 않았습니다:</span> ${escapeHtml(r.pushError ?? "")}<br>노트북에서 <code>git push</code> 를 직접 해 주세요.`);

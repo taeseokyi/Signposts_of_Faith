@@ -290,7 +290,7 @@ async function runJob(date) {
     job = await days.saveJob(date, { ...job, status: "error", error: error.message, costUsd: cost || null, finishedAt: new Date().toISOString() });
     return;
   }
-  await step("publish", result.pushed ? "ok" : "fail", result.pushed ? `커밋 ${result.commit} · push 완료 · 몇 분 뒤 웹사이트에 실립니다` : `커밋 ${result.commit} 은 됐지만 push 가 안 됐습니다: ${result.pushError}`);
+  await step("publish", result.pushed ? "ok" : "fail", result.pushed ? `「${result.subject}」 발행했습니다` : `「${result.subject}」 커밋은 됐지만 push 가 안 됐습니다: ${result.pushError}`);
   job = await days.saveJob(date, { ...job, status: "done", publish: result, costUsd: cost || null, finishedAt: new Date().toISOString() });
   console.log(`[${date}] 한 번에 발행 끝 · ${result.commit}${result.pushed ? " · push 완료" : " · push 안 됨"} · 약 $${cost.toFixed(2)}`);
 }
@@ -502,7 +502,8 @@ async function publish(date, { message, push = true, withRecord = true } = {}) {
       pushError = e.message;
     }
   }
-  return { commit: head, files: staged.split("\n"), pushed, pushError, pulled, pullError, url: `${SITE_URL}${date}/` };
+  // commit 은 "해시 제목". 화면에는 제목(subject)만 보인다 — 해시는 사용자에게 뜻이 없다.
+  return { commit: head, subject: head.replace(/^\S+\s*/, "") || msg, files: staged.split("\n"), pushed, pushError, pulled, pullError, url: `${SITE_URL}${date}/` };
 }
 
 async function gitStatus() {

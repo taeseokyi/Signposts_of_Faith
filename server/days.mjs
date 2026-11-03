@@ -156,7 +156,7 @@ export class Days {
         title: job.title,
         startedAt: job.startedAt,
         finishedAt: job.finishedAt,
-        publish: job.publish && { commit: job.publish.commit, pushed: job.publish.pushed, pushError: job.publish.pushError, url: job.publish.url },
+        publish: job.publish && { commit: job.publish.commit, subject: job.publish.subject, pushed: job.publish.pushed, pushError: job.publish.pushError, url: job.publish.url },
       },
     };
   }
