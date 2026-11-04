@@ -298,6 +298,10 @@ async function openDay(date) {
   closeCrop();
   $("photo-msg").textContent = "";
   $("chat-msg").textContent = "";
+  // 전에 열었던 날짜의 말씀이 새 날짜 화면에 남지 않도록 비운다 (그날 말씀은 refreshDay 가 다시 그린다)
+  $("readings-list").innerHTML = "";
+  $("readings-title").textContent = "말씀을 불러오는 중…";
+  $("readings-msg").textContent = "";
   $("title").innerHTML = `${date.length > 10 ? `${date.slice(0, 10)} <small>(${date.slice(11)})</small>` : date} <small>신앙의 이정표</small>`;
   // 주소에 날짜를 남겨, 폰이 화면을 다시 불러와도(앱 갱신, 탭 복귀) 같은 날짜와 진행 창으로 돌아온다
   if (location.hash !== `#${date}`) history.replaceState(null, "", `#${date}`);
@@ -862,6 +866,7 @@ async function loadReadings(refresh = false) {
   const date = state.date;
   $("readings-msg").textContent = "";
   $("readings-title").textContent = refresh ? "다시 불러오는 중…" : "말씀을 불러오는 중…";
+  if (!refresh) $("readings-list").innerHTML = ""; // 다시 불러올 때는 있던 말씀을 그대로 두고, 처음 불러올 때는 비운 채 기다린다
   busy($("btn-readings"), true);
   try {
     const { readings } = await api(`/api/days/${date}/readings${refresh ? "?refresh=1" : ""}`, { timeoutMs: 40000 });
