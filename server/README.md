@@ -182,6 +182,7 @@ Start-ScheduledTask    -TaskPath '\tsyi\' -TaskName 'Signposts helper'
 | POST | `/api/preview` | 웹사이트를 PDF 없이 빌드 → `/preview/` |
 | GET | `/api/git` | 브랜치, push 안 된 커밋 수, 바뀐 파일 |
 | POST | `/api/days/:date/publish` | `{message?, push?, record?}` commit + push |
+| DELETE | `/api/days/:date` | 폴더 지우기 (노트·대화·초안·작업 상태 포함). 저장소에 올라간 글이면 폴더와 8장 기록을 커밋에서 빼고 push 해 웹사이트에서 내림 → `{published, pushed, pushError}` |
 | GET | `/ca.crt` | 폰에 설치할 루트 인증서 (토큰 불필요) |
 
 ## 문제가 생기면

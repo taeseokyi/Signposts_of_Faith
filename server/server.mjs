@@ -513,6 +513,56 @@ async function publish(date, { message, push = true, withRecord = true } = {}) {
   return { commit: head, subject: head.replace(/^\S+\s*/, "") || msg, files: staged.split("\n"), pushed, pushError, pulled, pullError, url: `${SITE_URL}${date}/` };
 }
 
+/** WORKFLOW.md 8장에서 그 폴더의 기록 블록("### <폴더 이름> · …" 부터 다음 "### " 앞까지)을 뗍니다. 바뀌었으면 true. */
+async function removeRecord(date) {
+  const path = join(REPO, "WORKFLOW.md");
+  const text = await readFile(path, "utf8");
+  const head = text.indexOf(`### ${date} `);
+  if (head < 0) return false;
+  const next = text.indexOf("\n### ", head + 1);
+  await writeFile(path, text.slice(0, head) + (next >= 0 ? text.slice(next + 1).replace(/^\n+/, "") : ""), "utf8");
+  return true;
+}
+
+/**
+ * 폴더를 지웁니다 (바빠서 못 채운 날 등). 저장소에 올라간 글이면(발행됨) 폴더와 8장 기록을 커밋에서도 빼고 push 해
+ * 웹사이트에서 내립니다. 노트 사진·대화·초안·작업 상태(server/data)도 함께 지웁니다.
+ */
+async function removeDay(date) {
+  const tracked = (await git(["ls-files", "--", `${date}/`], { cwd: REPO })).trim();
+  const published = Boolean(tracked);
+  let result = { removed: date, published, pushed: false, pushError: null, commit: null, subject: null, pulled: null, pullError: null };
+  if (published) {
+    try {
+      await git(["fetch", "--quiet"], { cwd: REPO, timeoutMs: 60 * 1000 });
+      const st = await gitStatus();
+      if (st.behind) {
+        await git(["pull", "--ff-only", "--quiet"], { cwd: REPO });
+        result.pulled = st.behind;
+      }
+    } catch (e) {
+      result.pullError = e.message;
+    }
+    await git(["rm", "-r", "--quiet", "--", `${date}/`], { cwd: REPO });
+    if (await removeRecord(date)) await git(["add", "--", "WORKFLOW.md"], { cwd: REPO });
+    const msg = `${labelOf(date)} 글 거둠`;
+    await git(["commit", "-m", msg], { cwd: REPO });
+    const head = (await git(["log", "-1", "--format=%h %s"], { cwd: REPO })).trim();
+    result.commit = head;
+    result.subject = head.replace(/^\S+\s*/, "") || msg;
+    try {
+      await git(["push"], { cwd: REPO });
+      result.pushed = true;
+    } catch (e) {
+      result.pushError = e.message;
+    }
+  }
+  // 남은 것(노트/, 대화.md, 빌드 결과)과 작업 상태를 지웁니다.
+  await rm(days.dir(date), { recursive: true, force: true });
+  await rm(days.stateDir(date), { recursive: true, force: true });
+  return result;
+}
+
 async function gitStatus() {
   const out = await git(["status", "--porcelain=v1", "-b", "--untracked-files=all"], { cwd: REPO });
   const [branchLine, ...rest] = out.split("\n");
@@ -753,6 +803,24 @@ const handler = async (req, res) => {
 
     if (!part && req.method === "GET") {
       send(res, 200, { day: await days.detail(date), busy: busyDate() });
+      return;
+    }
+
+    if (!part && req.method === "DELETE") {
+      // 폴더 지우기. 발행한 글이면 커밋에서도 빼고 push 해 웹사이트에서 내립니다.
+      const job = await days.job(date);
+      if ((job && (job.status === "queued" || job.status === "running")) || working === date || chatting.has(date) || scrapping.has(date)) {
+        send(res, 409, { error: "이 날짜의 작업이 돌고 있어 지울 수 없습니다. 끝난 뒤 지우세요." });
+        return;
+      }
+      const other = busyDate();
+      if (other) {
+        send(res, 409, { error: `${other} 의 작업이 진행 중입니다. 끝난 뒤 지우세요.` });
+        return;
+      }
+      const result = await removeDay(date);
+      console.log(`[${date}] 폴더 지움${result.published ? ` · ${result.commit}${result.pushed ? " · push 완료" : " · push 안 됨"}` : ""}`);
+      send(res, 200, result);
       return;
     }
 

@@ -1282,6 +1282,30 @@ async function publish() {
   }
 }
 
+/** 폴더 지우기. 발행한 글이면 서버가 커밋에서도 빼고 push 해 웹사이트에서 내립니다. */
+async function removeDay() {
+  const date = state.date;
+  const label = labelOf(date);
+  const q = state.day?.hasContent
+    ? `${label} 폴더를 지웁니다. 글(content.md)과 사진, 대화, 초안이 모두 지워지고, 발행한 글이면 웹사이트와 8장 기록에서도 내립니다 (commit + push).\n\n정말 지울까요?`
+    : `${label} 폴더를 지웁니다. 노트 사진, 대화, 초안이 모두 지워집니다.\n\n정말 지울까요?`;
+  if (!confirm(q)) return;
+  busy($("btn-remove-day"), true);
+  $("remove-msg").textContent = "지우는 중…";
+  try {
+    const r = await api(`/api/days/${date}`, { method: "DELETE", timeoutMs: 5 * 60 * 1000 });
+    if (!r.published) toast(`${label} 폴더를 지웠습니다.`, 4000);
+    else if (r.pushed) toast(`${label} 폴더를 지우고 웹사이트에서도 내렸습니다. 몇 분 안에 사이트에서 사라집니다.`, 6000);
+    else toast(`${label} 폴더를 지웠지만 push 가 안 됐습니다: ${r.pushError ?? ""} — 노트북에서 git push 를 해 주세요.`, 8000);
+    $("btn-back").click();
+  } catch (e) {
+    toast(e.message, 6000);
+  } finally {
+    $("remove-msg").textContent = "";
+    busy($("btn-remove-day"), false);
+  }
+}
+
 // ---------- 시작 ----------
 
 function wire() {
@@ -1349,6 +1373,7 @@ function wire() {
   $("btn-preview").addEventListener("click", makePreview);
   $("btn-git").addEventListener("click", gitStatus);
   $("btn-publish").addEventListener("click", publish);
+  $("btn-remove-day").addEventListener("click", () => removeDay().catch((e) => toast(e.message)));
 
   const today = new Date();
   $("new-date").value = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
