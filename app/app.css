@@ -75,6 +75,7 @@ h3 { font-size: 15px; margin: 14px 0 6px; color: var(--sub); }
   width: 26px; height: 26px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 14px;
 }
 .badge { font-size: 12px; color: var(--sub); border: 1px solid var(--line); border-radius: 999px; padding: 1px 8px; margin-left: auto; }
+.badge:empty { display: none; } /* 보일 말이 없으면 빈 테두리(하이픈처럼 보임)를 그리지 않는다 */
 .badge.ok { color: var(--ok); border-color: var(--ok); }
 .badge.warn { color: var(--warn); border-color: var(--warn); }
 .badge.bad { color: var(--bad); border-color: var(--bad); }
