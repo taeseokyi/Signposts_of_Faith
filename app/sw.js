@@ -1,5 +1,5 @@
 // 홈 화면 설치용 서비스 워커. 앱 파일만 캐시하고, /api 와 /preview 는 캐시하지 않습니다.
-const VERSION = "2026-11-04e";
+const VERSION = "2026-11-04f";
 const CACHE = `signposts-helper-${VERSION}`;
 const ASSETS = ["./", "./index.html", "./app.css", "./app.js", "./manifest.webmanifest", "./icons/icon-192.png", "./icons/icon-512.png", "./icons/icon-maskable-512.png"];
 

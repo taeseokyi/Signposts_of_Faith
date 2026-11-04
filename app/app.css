@@ -9,6 +9,8 @@
   --bad: #8a2f2f;
   --warn: #8a6d2f;
   --ok: #3f6b3a;
+  --danger-bg: #8a2f2f; /* 지우기·발행 단추: 짙은 빨강 바탕에 흰 글자 */
+  --danger-ink: #fff;
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -22,6 +24,8 @@
     --ok: #8fc48a;
     --warn: #d9b36a;
     --bad: #e08a8a;
+    --danger-bg: #e08a8a; /* 어두운 화면: 연한 빨강 바탕에 짙은 글자 */
+    --danger-ink: #1d1b18;
   }
 }
 * { box-sizing: border-box; }
@@ -46,6 +50,11 @@ a, code { overflow-wrap: anywhere; }
 .top h1 { flex: 1; margin: 0; font-size: 18px; font-weight: 700; letter-spacing: 0.02em; }
 .top h1 small { font-weight: 400; opacity: 0.85; margin-left: 4px; }
 .icon-btn { background: transparent; border: 0; color: #fff; font-size: 22px; padding: 2px 8px; cursor: pointer; }
+/* 뒤로(목록) 단추: 글꼴에 따라 "←" 가 가는 선으로 보여 SVG 화살표로 그리고, 누르기 쉽게 44px 로 */
+#btn-back { width: 44px; height: 44px; margin: -6px 0 -6px -10px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; }
+#btn-back[hidden] { display: none; }
+#btn-back svg { width: 26px; height: 26px; display: block; }
+#btn-back:active { background: rgba(255,255,255,0.2); }
 a.icon-btn.site { font-size: 13px; text-decoration: none; border: 1px solid rgba(255,255,255,0.5); border-radius: 999px; padding: 2px 10px; }
 .links { font-size: 14px; display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 6px 0 10px; }
 .links a { color: var(--gold); }
@@ -88,7 +97,7 @@ button, .file-btn {
   background: var(--panel); color: var(--ink);
 }
 button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
-button.danger { background: var(--bad); border-color: var(--bad); }
+button.danger { background: var(--danger-bg); color: var(--danger-ink); border-color: var(--danger-bg); font-weight: 700; }
 button:disabled { opacity: 0.5; cursor: wait; }
 button.link { background: none; border: 0; color: var(--gold); font-size: 13px; padding: 0 4px; margin-left: auto; }
 .file-btn { display: inline-block; position: relative; overflow: hidden; }
