@@ -302,6 +302,9 @@ async function openDay(date) {
   $("readings-list").innerHTML = "";
   $("readings-title").textContent = "말씀을 불러오는 중…";
   $("readings-msg").textContent = "";
+  state.board = null;
+  $("board-result").hidden = true;
+  $("board-msg").textContent = "";
   $("title").innerHTML = `${date.length > 10 ? `${date.slice(0, 10)} <small>(${date.slice(11)})</small>` : date} <small>신앙의 이정표</small>`;
   // 주소에 날짜를 남겨, 폰이 화면을 다시 불러와도(앱 갱신, 탭 복귀) 같은 날짜와 진행 창으로 돌아온다
   if (location.hash !== `#${date}`) history.replaceState(null, "", `#${date}`);
@@ -1282,6 +1285,51 @@ async function publish() {
   }
 }
 
+// ---------- 굿뉴스 게시판용 HTML ----------
+
+/** 서버가 python template/build.py <날짜> --board 를 돌려 만든 본문·제목·태그를 받아 복사할 수 있게 보입니다. */
+async function makeBoard() {
+  if (!state.day?.hasContent) return toast("content.md 가 아직 없습니다.");
+  const date = state.date;
+  busy($("btn-board"), true);
+  $("board-msg").textContent = "만드는 중…";
+  try {
+    const r = await api(`/api/days/${date}/board`, { method: "POST", body: {}, timeoutMs: 2 * 60 * 1000 });
+    if (state.date !== date) return;
+    state.board = r;
+    $("board-title").textContent = r.title;
+    $("board-title-len").textContent = `(${r.title.length}자, 최대 55자)`;
+    $("board-tags").textContent = r.tags;
+    $("board-html").value = r.html;
+    $("board-preview-link").href = r.preview;
+    $("board-result").hidden = false;
+    $("board-msg").textContent = `본문 ${r.chars.toLocaleString()}자`;
+  } catch (e) {
+    $("board-msg").textContent = "";
+    toast(e.message, 8000);
+  } finally {
+    busy($("btn-board"), false);
+  }
+}
+
+/** 클립보드에 넣습니다. 폰 브라우저가 막으면 숨은 글상자를 선택해 복사 명령을 씁니다. */
+async function copyText(text, what) {
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    const ta = $("board-html");
+    const keep = ta.value;
+    ta.value = text;
+    ta.closest("details").open = true;
+    ta.focus();
+    ta.select();
+    const ok = document.execCommand && document.execCommand("copy");
+    ta.value = keep;
+    if (!ok) return toast(`${what}을(를) 복사하지 못했습니다. 아래 글상자에서 길게 눌러 전체 선택해 복사하세요.`, 6000);
+  }
+  toast(`${what}을(를) 복사했습니다.`);
+}
+
 /** 폴더 지우기. 발행한 글이면 서버가 커밋에서도 빼고 push 해 웹사이트에서 내립니다. */
 async function removeDay() {
   const date = state.date;
@@ -1374,6 +1422,10 @@ function wire() {
   $("btn-git").addEventListener("click", gitStatus);
   $("btn-publish").addEventListener("click", publish);
   $("btn-remove-day").addEventListener("click", () => removeDay().catch((e) => toast(e.message)));
+  $("btn-board").addEventListener("click", () => makeBoard().catch((e) => toast(e.message)));
+  $("btn-board-copy").addEventListener("click", () => copyText(state.board?.html ?? "", "본문"));
+  $("btn-board-copy-title").addEventListener("click", () => copyText(state.board?.title ?? "", "제목"));
+  $("btn-board-copy-tags").addEventListener("click", () => copyText(state.board?.tags ?? "", "태그"));
 
   const today = new Date();
   $("new-date").value = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;

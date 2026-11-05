@@ -136,7 +136,7 @@ pre.md, pre.git {
   white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px;
   background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 10px; max-height: 50vh; overflow: auto;
 }
-#preview-link { color: var(--gold); }
+#preview-link, #board-preview-link { color: var(--gold); }
 #publish-result { font-size: 14px; }
 #publish-result a { color: var(--gold); }
 

@@ -1030,6 +1030,31 @@ const handler = async (req, res) => {
       return;
     }
 
+    if (part === "board" && req.method === "POST") {
+      // 굿뉴스 게시판에 손으로 올릴 본문: python template/build.py <날짜> --board → board.html, board_preview.html, 게시정보.txt
+      const r = await python([date, "--board"], { cwd: REPO, timeoutMs: 2 * 60 * 1000 });
+      if (r.code !== 0) {
+        send(res, 409, { error: `게시판용 HTML 을 만들지 못했습니다.\n${(r.stderr || r.stdout).trim().slice(0, 800)}` });
+        return;
+      }
+      const html = await readFile(join(days.dir(date), "board.html"), "utf8");
+      const info = await readFile(join(days.dir(date), "게시정보.txt"), "utf8").catch(() => "");
+      const field = (name) => (new RegExp(`^${name}: (.*)$`, "m").exec(info)?.[1] ?? "").trim();
+      send(res, 200, { html, title: field("제목"), tags: field("태그"), category: field("분류"), chars: html.length, preview: `/api/days/${date}/board/preview` });
+      return;
+    }
+
+    if (part === "board" && rest === "preview" && req.method === "GET") {
+      const page = await readFile(join(days.dir(date), "board_preview.html"), "utf8").catch(() => null);
+      if (page === null) {
+        send(res, 404, { error: "게시판용 미리보기가 아직 없습니다. 먼저 '게시판용 HTML 만들기'를 누르세요." });
+        return;
+      }
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+      res.end(page);
+      return;
+    }
+
     if (part === "publish" && req.method === "POST") {
       const body = await readJson(req);
       try {

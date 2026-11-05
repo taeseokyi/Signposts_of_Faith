@@ -202,6 +202,28 @@
       </div>
 
       <div class="panel">
+        <h2>굿뉴스 게시판 (손으로 올리기)</h2>
+        <p class="hint">게시판 편집기는 <code>&lt;style&gt;</code>·class 를 지우므로 웹페이지 소스를 넣으면 깨집니다. 여기서 만든 본문을 복사해, 글쓰기 화면의 편집 창 아래 <b>HTML</b> 버튼을 누른 뒤 붙여 넣고 <b>Editor</b> 로 돌아와 모양을 봅니다. 사진은 들어가지 않습니다.</p>
+        <div class="row">
+          <button id="btn-board">게시판용 HTML 만들기</button>
+          <span class="hint" id="board-msg"></span>
+        </div>
+        <div id="board-result" hidden>
+          <p class="hint"><b>제목</b> <span id="board-title"></span> <span class="sub" id="board-title-len"></span><br><b>분류</b> 우리들의 묵상<br><b>태그</b> <span id="board-tags"></span></p>
+          <div class="row">
+            <button class="primary" id="btn-board-copy">본문 복사</button>
+            <button id="btn-board-copy-title">제목 복사</button>
+            <button id="btn-board-copy-tags">태그 복사</button>
+            <a id="board-preview-link" target="_blank" rel="noopener">미리보기 열기 ↗</a>
+          </div>
+          <details>
+            <summary>본문 HTML 직접 보기 (복사가 안 되면 여기서 길게 눌러 전체 선택)</summary>
+            <textarea id="board-html" rows="8" readonly spellcheck="false"></textarea>
+          </details>
+        </div>
+      </div>
+
+      <div class="panel">
         <h2>폴더 지우기</h2>
         <p class="hint">바빠서 못 채운 날은 폴더째 지웁니다. 노트 사진·대화·초안도 함께 지워지고, 이미 발행한 글이면 웹사이트와 8장 기록에서도 내립니다 (commit + push).</p>
         <div class="row">
