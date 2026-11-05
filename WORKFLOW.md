@@ -111,6 +111,7 @@
 게시판 에디터와 사이트의 제약이다. 2026-10-21 글(192619)의 실제 HTML에서 확인했다.
 
 - **인라인 `style` 속성만 살아남는다.** `<style>` 블록, class, 외부 CSS는 제거된다. 4.2의 인쇄용 CSS를 그대로 쓸 수 없다.
+- **게시판 CSS 가 모든 `<td>` 에 밑줄을 긋는다.** 글은 `table.register01 > td.data` 안에 들어가므로 `.register01 tbody td {border-bottom:1px solid #c2bdb8; padding:11px 0 11px 20px; line-height:26px; text-align:left}` 가 글 안의 모든 칸에 미친다. 칸마다 인라인으로 `border-bottom:0`(또는 `border:…`)과 `padding` 을 꼭 적는다. 빌드가 `border` 없는 `<td>` 를 잡아낸다. (2026-11-05, 2026-11-03-2 글에서 흐름 상자 아래와 인용 아래에 선이 생긴 것으로 확인)
 - **레이아웃은 `<table>`로 짠다.** 확인된 사용 태그: `table` `tbody` `tr` `td` `p` `span` `ul` `li` `br` `b` `strong` `img`. 전체를 감싸는 `div`(인라인 style)는 유지되지만, div+flex 배치는 쓰지 않는다.
 - **본문 영역 고정 폭 720px** 기준으로 짠다. 바깥 표는 `width:100%`.
 - **글자를 인쇄본보다 키운다.** 사이트 viewport가 `initial-scale=0.3`이라 휴대폰에서는 페이지 전체가 30%로 축소돼 열린다. 인쇄 감각으로 12~14px을 쓰면 폰에서는 읽을 수 없다.

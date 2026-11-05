@@ -83,7 +83,7 @@ def render(data):
     out.append(section_head('prologue', '여는 말씀'))
     for v in data['prologue']['verses']:
         ref = p(inline(v['ref']), SIZE['min'], c['sub'], text_align='right', margin='8px 0 0', line_height='1.5')
-        cell = (f'<td style="{text}{_style(background=c["quote_bg"], border_left=f"3px solid {c["accent"]}", padding="18px 20px", font_size=f"{SIZE["body"]}px", line_height="1.9")}">'
+        cell = (f'<td style="{text}{_style(background=c["quote_bg"], border_bottom="0", border_left=f"3px solid {c["accent"]}", padding="18px 20px", font_size=f"{SIZE["body"]}px", line_height="1.9")}">'
                 f'{lines_html(v["lines"])}{ref}</td>')
         out.append(table(f'<tr>{cell}</tr>'))
     for lines in data['prologue']['paras']:
@@ -96,10 +96,10 @@ def render(data):
             p(inline(m['title']), SIZE['milestone_title'], c['ink'], font_weight='bold', margin='2px 0 8px', line_height='1.5')
             + p('물음 · ' + inline(m['question']), SIZE['small'], c['sub'], margin='0 0 16px', line_height='1.7')
             + ''.join(p(lines_html(lines), SIZE['body'], c['ink'], margin='0 0 14px') for lines in m['paras'])
-            + table(f'<tr><td style="{base(c["accent"])}{_style(border_left=f"3px solid {c["gold"]}", padding="4px 0 4px 16px", font_size=f"{SIZE["body"]}px", line_height="1.8")}">{inline(m["remember"])}</td></tr>', margin='6px 0 0')
+            + table(f'<tr><td style="{base(c["accent"])}{_style(border_bottom="0", border_left=f"3px solid {c["gold"]}", padding="4px 0 4px 16px", font_size=f"{SIZE["body"]}px", line_height="1.8")}">{inline(m["remember"])}</td></tr>', margin='6px 0 0')
         )
-        row = (f'<tr><td style="{base(c["accent"])}{_style(width="48px", vertical_align="top", font_size=f"{SIZE["milestone_no"]}px", line_height="1.2", padding="0 8px 0 0")}">{i}</td>'
-               f'<td style="{text}{_style(vertical_align="top", padding="0")}">{body}</td></tr>')
+        row = (f'<tr><td style="{base(c["accent"])}{_style(width="48px", vertical_align="top", font_size=f"{SIZE["milestone_no"]}px", line_height="1.2", padding="0 8px 0 0", border_bottom="0")}">{i}</td>'
+               f'<td style="{text}{_style(vertical_align="top", padding="0", border_bottom="0")}">{body}</td></tr>')
         out.append(table(row, margin='0 0 40px'))
 
     # 나의 묵상 흐름
@@ -107,7 +107,7 @@ def render(data):
     cells = []
     for k, step in enumerate(data['flow']['steps']):
         if k:
-            cells.append(f'<td style="{base(c["gold"])}{_style(font_size=f"{SIZE["min"]}px", padding="0 2px", text_align="center")}">→</td>')
+            cells.append(f'<td style="{base(c["gold"])}{_style(width="24px", font_size=f"{SIZE["min"]}px", padding="0 2px", text_align="center", border_bottom="0", white_space="nowrap")}">→</td>')
         cells.append(f'<td style="{base(c["accent"])}{_style(border=f"1px solid {c["gold"]}", padding="8px 6px", font_size=f"{SIZE["small"]}px", text_align="center", line_height="1.4")}">{inline(step)}</td>')
     out.append(table(f'<tr>{"".join(cells)}</tr>', margin='0 0 22px'))
     for lines in data['flow']['paras']:
@@ -165,15 +165,20 @@ def preview_page(fragment, title):
 class _Checker(HTMLParser):
     def __init__(self):
         super().__init__()
-        self.tags, self.classes, self.sizes = set(), 0, []
+        self.tags, self.classes, self.sizes, self.bare_td = set(), 0, [], 0
 
     def handle_starttag(self, tag, attrs):
         self.tags.add(tag)
+        style = ''
         for name, value in attrs:
             if name == 'class':
                 self.classes += 1
             if name == 'style' and value:
+                style = value
                 self.sizes += [int(s) for s in re.findall(r'font-size:(\d+)px', value)]
+        # 게시판 CSS(.register01 tbody td)가 모든 칸에 밑줄(border-bottom)과 padding 을 준다. 칸마다 인라인으로 덮어써야 한다.
+        if tag == 'td' and not re.search(r'border(-bottom)?:', style):
+            self.bare_td += 1
 
 
 def check(fragment, title):
@@ -186,6 +191,8 @@ def check(fragment, title):
         problems.append(('오류', f'게시판에서 확인되지 않은 태그: {", ".join(sorted(extra))}'))
     if ch.classes:
         problems.append(('오류', f'class 속성 {ch.classes}개 (게시판에서 제거됨)'))
+    if ch.bare_td:
+        problems.append(('오류', f'border-bottom 을 정하지 않은 <td> {ch.bare_td}개 (게시판 CSS 가 칸마다 밑줄을 긋는다)'))
     if re.search(r'<style|<script|<link', fragment, re.I):
         problems.append(('오류', '<style>/<script>/<link> 는 게시판에서 제거됨'))
     small = sorted({s for s in ch.sizes if s < SIZE['min']})
